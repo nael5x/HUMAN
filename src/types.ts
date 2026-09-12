@@ -6,6 +6,9 @@ export type SceneState =
   | 'INSTINCT_TEST'
   | 'OBEDIENCE_TEST'
   | 'DECISION_TEST'
+  | 'MEMORY_TEST'
+  | 'PREDICTION'
+  | 'BEHAVIOR_REVEAL'
   | 'ANALYSIS'
   | 'VERIFIED'
   | 'CAMERA_PERMISSION'
@@ -13,6 +16,7 @@ export type SceneState =
   | 'MIRROR'
   | 'DESYNC'
   | 'TWIST'
+  | 'RECONSTRUCTION'
   | 'RESULT';
 
 export interface PointerSample {
@@ -112,6 +116,8 @@ export interface SessionData {
   obedienceScoreValue: number;
   instinctScoreValue: number;
   decisionScoreValue: number;
+  predictabilityScore?: number;
+  narrativeObservations?: string[];
 
   // Aliases for compatibility
   humanityScore: number;
