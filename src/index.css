@@ -1,0 +1,144 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-mono: 'JetBrains Mono', monospace;
+    --font-display: 'Syne', sans-serif;
+  }
+
+  html, body, #root {
+    min-height: 100%;
+    min-height: 100dvh;
+    background: #030407;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    background-color: #030407;
+    color: #e2e8f0;
+    font-family: var(--font-mono);
+    overflow-x: hidden;
+    overscroll-behavior: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* CRT Scanline & Grain Overlays */
+.scanlines {
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%, 
+    rgba(0, 0, 0, 0.35) 50%
+  ), linear-gradient(
+    90deg,
+    rgba(255, 0, 0, 0.02),
+    rgba(0, 255, 0, 0.01),
+    rgba(0, 0, 255, 0.02)
+  );
+  background-size: 100% 3px, 6px 100%;
+  pointer-events: none;
+}
+
+.crt-vignette {
+  background: radial-gradient(circle at center, transparent 65%, rgba(0, 0, 0, 0.85) 100%);
+  pointer-events: none;
+}
+
+/* Glitch effects */
+@keyframes micro-shake {
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(-2px, 1px); }
+  40% { transform: translate(2px, -1px); }
+  60% { transform: translate(-1px, -1px); }
+  80% { transform: translate(1px, 2px); }
+  100% { transform: translate(0, 0); }
+}
+
+.animate-glitch {
+  animation: micro-shake 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
+}
+
+.chromatic-glow {
+  text-shadow: -1.5px 0 rgba(255, 0, 60, 0.7), 1.5px 0 rgba(0, 220, 255, 0.7);
+}
+
+.terminal-cursor::after {
+  content: '█';
+  animation: cursor-blink 1s step-start infinite;
+  margin-left: 2px;
+}
+
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Clinical Target Reticle */
+.reticle-crosshair::before,
+.reticle-crosshair::after {
+  content: '';
+  position: absolute;
+  background-color: rgba(255, 255, 255, 0.4);
+}
+.reticle-crosshair::before {
+  top: 50%;
+  left: -6px;
+  right: -6px;
+  height: 1px;
+}
+.reticle-crosshair::after {
+  left: 50%;
+  top: -6px;
+  bottom: -6px;
+  width: 1px;
+}
+
+
+/* Subtle film grain: intentionally low-opacity and non-interactive. */
+.film-grain {
+  background-image:
+    radial-gradient(circle at 20% 35%, rgba(255,255,255,0.16) 0 0.45px, transparent 0.7px),
+    radial-gradient(circle at 70% 65%, rgba(255,255,255,0.11) 0 0.45px, transparent 0.7px);
+  background-size: 5px 5px, 7px 7px;
+  mix-blend-mode: soft-light;
+  animation: grain-drift 0.32s steps(2, end) infinite;
+}
+
+@keyframes grain-drift {
+  0% { transform: translate3d(0, 0, 0); }
+  25% { transform: translate3d(-1px, 1px, 0); }
+  50% { transform: translate3d(1px, -1px, 0); }
+  75% { transform: translate3d(1px, 1px, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+@keyframes fade-in-clinical {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fadeIn {
+  animation: fade-in-clinical 0.42s ease-out both;
+}
+
+@media (max-width: 640px) {
+  .scanlines {
+    background-size: 100% 4px, 8px 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .film-grain, .animate-glitch {
+    animation: none !important;
+  }
+}

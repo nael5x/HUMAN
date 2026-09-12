@@ -1,0 +1,8 @@
+{
+  "name": "HUMAN?",
+  "description": "You say you are. PROVE IT. An interactive cinematic psychological sci-fi verification experiment.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}
