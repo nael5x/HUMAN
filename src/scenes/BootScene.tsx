@@ -1,26 +1,83 @@
 import React, { useEffect, useState } from 'react';
 import { sound } from '../audio/AudioEngine';
+import { userMemory } from '../memory/UserMemory';
+import { ChallengePayload } from '../utils/ChallengeMode';
+import { hiddenBehaviors } from '../behavior/HiddenBehaviorEvents';
 
 interface BootSceneProps {
   subjectId: string;
+  seed: number;
+  challenge: ChallengePayload | null;
   onComplete: () => void;
 }
 
-export const BootScene: React.FC<BootSceneProps> = ({ subjectId, onComplete }) => {
+export const BootScene: React.FC<BootSceneProps> = ({ subjectId, seed, challenge, onComplete }) => {
   const [lines, setLines] = useState<string[]>([]);
   const [isDetected, setIsDetected] = useState<boolean>(false);
 
   useEffect(() => {
-    const sequence = [
+    // Record visit in local memory
+    userMemory.incrementVisitCount();
+    const userMem = userMemory.getMemory();
+    const isReturning = userMem.visitCount > 1;
+
+    const timeouts: ReturnType<typeof setTimeout>[] = [];
+
+    // Trigger returning whisper if applicable
+    if (isReturning) {
+      const returningWhisperTimer = setTimeout(() => {
+        hiddenBehaviors.triggerReturningWhisper();
+      }, 1500);
+      timeouts.push(returningWhisperTimer);
+    }
+
+    // Build adaptive sequence based on returning history and challenge
+    const sequence: { text: string; delay: number; sound: string }[] = [
       { text: 'INITIALIZING VERIFICATION PROTOCOL...', delay: 200, sound: 'click' },
-      { text: 'Behavior monitor ........ READY', delay: 800, sound: 'click' },
-      { text: 'Motor analysis .......... READY', delay: 1400, sound: 'click' },
-      { text: 'Response capture ........ READY', delay: 2000, sound: 'click' },
-      { text: 'Pattern engine .......... READY', delay: 2600, sound: 'pulse' },
-      { text: 'SUBJECT DETECTED', delay: 3300, sound: 'detected' },
+      { text: 'Behavior monitor ........ READY', delay: 700, sound: 'click' },
+      { text: 'Motor analysis .......... READY', delay: 1200, sound: 'click' },
+      { text: 'Response capture ........ READY', delay: 1700, sound: 'click' },
     ];
 
-    const timeouts: NodeJS.Timeout[] = [];
+    let currentDelay = 2200;
+
+    // Challenge acknowledgement
+    if (challenge) {
+      sequence.push({
+        text: `CHALLENGE KEY VALIDATED // REF: ${challenge.challengerModelId}`,
+        delay: currentDelay,
+        sound: 'pulse',
+      });
+      currentDelay += 550;
+    }
+
+    // Returning user diagnostic callback
+    if (isReturning) {
+      let returningLine = 'Subject recognized.';
+      if (userMem.previousEnding === 'ANOMALY') {
+        returningLine = 'Previous session flagged: BEHAVIORAL ANOMALY.';
+      } else if (userMem.previousEnding === 'MACHINE') {
+        returningLine = 'Previous session flagged: LOW ORGANIC VARIANCE.';
+      } else if (userMem.previousEnding === 'REPLACED') {
+        returningLine = 'Previous session flagged: REPLACEMENT RECORDED.';
+      } else if (userMem.previousMachineId && Math.abs(seed) % 3 === 0) {
+        returningLine = `Prior archetype [${userMem.previousMachineId}] archived.`;
+      }
+
+      sequence.push({
+        text: returningLine,
+        delay: currentDelay,
+        sound: 'pulse',
+      });
+      currentDelay += 600;
+    }
+
+    sequence.push(
+      { text: 'Pattern engine .......... READY', delay: currentDelay, sound: 'pulse' },
+      { text: 'SUBJECT DETECTED', delay: currentDelay + 650, sound: 'detected' }
+    );
+
+    const totalDuration = currentDelay + 1700;
 
     sequence.forEach((item) => {
       const t = setTimeout(() => {
@@ -39,13 +96,13 @@ export const BootScene: React.FC<BootSceneProps> = ({ subjectId, onComplete }) =
 
     const completionTimeout = setTimeout(() => {
       onComplete();
-    }, 4600);
+    }, totalDuration);
     timeouts.push(completionTimeout);
 
     return () => {
       timeouts.forEach((t) => clearTimeout(t));
     };
-  }, [onComplete]);
+  }, [onComplete, challenge, seed]);
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-[#020306] p-6 text-neutral-300 font-mono select-none">

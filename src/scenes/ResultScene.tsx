@@ -1,64 +1,344 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Download, Share2, RefreshCw, Check } from 'lucide-react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
+import { Download, Share2, RefreshCw, Check, Swords } from 'lucide-react';
 import { sound } from '../audio/AudioEngine';
+import { director } from '../director/ExperienceDirector';
 import { SessionData } from '../types';
-import { GenerativeIdentityCanvas } from '../visuals/GenerativeIdentityCanvas';
+import { extractMachineDNA, MachineDNA, resolveMachineArchetype, SeededRandom } from '../dna/MachineDNA';
+import { EndingResolver } from '../dna/EndingResolver';
+import { MachineTwinCanvas } from '../visuals/MachineTwinCanvas';
+import { SecretResolver } from '../behavior/SecretRegistry';
+import { userMemory } from '../memory/UserMemory';
+import { ChallengeProtocol, ChallengePayload } from '../utils/ChallengeMode';
 
 interface ResultSceneProps {
   session: SessionData;
+  challenge?: ChallengePayload | null;
   onRestart: () => void;
 }
 
-export const ResultScene: React.FC<ResultSceneProps> = ({ session, onRestart }) => {
+export const ResultScene: React.FC<ResultSceneProps> = ({ session, challenge, onRestart }) => {
   const [copied, setCopied] = useState<boolean>(false);
   const [isGeneratingImg, setIsGeneratingImg] = useState<boolean>(false);
+  const [cardFormat, setCardFormat] = useState<'story' | 'square'>('story');
+  const [revealPhase, setRevealPhase] = useState<number>(0);
+  const copiedTimerRef = useRef<number | null>(null);
+
+  // Compute MachineDNA and Ending deterministically
+  const machineDNA: MachineDNA = useMemo(() => extractMachineDNA(session), [session]);
+  const ending = useMemo(() => EndingResolver.resolve(machineDNA), [machineDNA]);
+  const machineArchetype = useMemo(() => resolveMachineArchetype(machineDNA), [machineDNA]);
+  const commentaryStatements = useMemo(() => EndingResolver.generateCommentary(machineDNA), [machineDNA]);
+
+  const modelId = session.modelId || machineDNA.modelId;
+  const classification = session.classification || machineArchetype;
+  const humanity = Math.round(machineDNA.humanity * 100);
+  const predictability = Math.round(machineDNA.predictability * 100);
+  const curiosity = Math.round(machineDNA.curiosity * 100);
+  const obedience = Math.round(machineDNA.obedience * 100);
+  const instinct = Math.round(machineDNA.instinct * 100);
+  const motorProfile =
+    machineDNA.motorChaos > 0.65
+      ? 'IRREGULAR'
+      : machineDNA.motorPrecision > 0.7
+        ? 'CONTROLLED'
+        : 'ADAPTIVE';
+
+  const anomaliesDiscovered = useMemo(() => SecretResolver.getDiscoveredCount(), []);
 
   useEffect(() => {
-    // Re-engage subtle atmospheric drone for result inspection
+    director.setNarrativeState('RESULT', 0.12);
     sound.startAmbience();
-    sound.setAmbienceTension(0.16);
-  }, []);
 
-  const modelId = session.modelId || `H-X${(session.seed % 99) + 1}`;
-  const classification = session.classification || 'ADAPTIVE OBSERVER';
-  const humanity = session.humanity || session.humanityScore || 87.4;
-  const curiosity = session.curiosity || session.curiosityScore || 78;
-  const obedience = session.obedienceScoreValue || session.obedienceMetric || 52;
-  const instinct = session.instinctScoreValue || session.instinctMetric || 74;
-  const decision = session.decisionScoreValue || session.decisionMetric || 68;
-  const anomaly =
-    session.status === 'UNSTABLE'
-      ? 'TEMPORAL DRIFT'
-      : session.status === 'NONCOMPLIANT' || obedience < 45
-        ? 'NON-COMPLIANT'
-        : session.status === 'CURIOUS'
-          ? 'EXPLORATORY BIAS'
-          : 'PARITY VERIFIED';
+    // Persist result metadata into local memory safely
+    userMemory.recordSessionCompletion({
+      ending: ending.type,
+      machineClass: classification,
+      machineId: modelId,
+      humanity,
+      secrets: SecretResolver.getDiscoveredIds(),
+    });
+
+    // Progressive disclosure sequence
+    const t1 = setTimeout(() => setRevealPhase(1), 300);
+    const t2 = setTimeout(() => setRevealPhase(2), 900);
+    const t3 = setTimeout(() => setRevealPhase(3), 1600);
+    const t4 = setTimeout(() => setRevealPhase(4), 2200);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(t4);
+      if (copiedTimerRef.current !== null) {
+        window.clearTimeout(copiedTimerRef.current);
+        copiedTimerRef.current = null;
+      }
+    };
+  }, [classification, ending.type, humanity, modelId]);
+
+  // Generate shareable challenge link
+  const challengeUrl = useMemo(() => {
+    return ChallengeProtocol.createChallengeUrl({
+      challengerModelId: modelId,
+      challengerHumanity: humanity,
+      challengerEnding: ending.type,
+      challengerClass: classification,
+    });
+  }, [classification, ending.type, humanity, modelId]);
 
   const handleShare = async () => {
     sound.playClick(1100);
-    const shareText = `HUMAN?\n\nMODEL ${modelId}\n${humanity}% HUMAN\n\nCLASS\n${classification}\n\nSTATUS ${session.status}\nCURIOSITY ${curiosity}%\nOBEDIENCE ${obedience}%\nINSTINCT ${instinct}%\nDECISION ${decision}%\n\nPROVE YOU ARE HUMAN.\n${window.location.href}`;
+    const shareText = `I scored ${humanity}% human. HUMAN? classified me as ${classification} [${ending.title}]. Prove you're human.`;
 
     if (navigator.share) {
       try {
-        await navigator.share({
-          title: 'HUMAN? — Verification Dossier',
-          text: shareText,
-          url: window.location.href,
-        });
+        const exportCanvas = await renderCardCanvas(cardFormat === 'square');
+        const blob = await new Promise<Blob | null>((resolve) => exportCanvas.toBlob(resolve, 'image/png'));
+        const file = blob ? new File([blob], `HUMAN_${modelId}_${cardFormat}.png`, { type: 'image/png' }) : null;
+
+        if (file && navigator.canShare?.({ files: [file] })) {
+          await navigator.share({
+            title: `HUMAN? — Model ${modelId}`,
+            text: shareText,
+            url: challengeUrl,
+            files: [file],
+          });
+        } else {
+          await navigator.share({
+            title: `HUMAN? — Model ${modelId}`,
+            text: shareText,
+            url: challengeUrl,
+          });
+        }
         return;
       } catch {
-        // Fallback to clipboard
+        // User cancellation or unsupported file sharing falls through to clipboard.
       }
     }
 
     try {
-      await navigator.clipboard.writeText(shareText);
+      await navigator.clipboard.writeText(`${shareText}\n${challengeUrl}`);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
+      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => {
+        setCopied(false);
+        copiedTimerRef.current = null;
+      }, 2500);
     } catch {
-      // ignore
+      // Clipboard may be unavailable in restrictive browser contexts.
     }
+  };
+
+  const renderCardCanvas = async (isSquare: boolean): Promise<HTMLCanvasElement> => {
+    if ('fonts' in document) {
+      await document.fonts.ready;
+    }
+
+    const width = 1080;
+    const height = isSquare ? 1080 : 1920;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('2D context failed');
+
+    // Dark canvas background
+    ctx.fillStyle = '#020306';
+    ctx.fillRect(0, 0, width, height);
+
+    // Subtle atmospheric gradient based on ending
+    const auraColor =
+      ending.type === 'REPLACED'
+        ? 'rgba(244, 63, 94, 0.08)'
+        : ending.type === 'ANOMALY'
+          ? 'rgba(245, 158, 11, 0.08)'
+          : ending.type === 'MACHINE'
+            ? 'rgba(56, 189, 248, 0.08)'
+            : 'rgba(16, 185, 129, 0.08)';
+
+    const grad = ctx.createRadialGradient(width / 2, height * 0.45, 50, width / 2, height * 0.45, width * 0.7);
+    grad.addColorStop(0, auraColor);
+    grad.addColorStop(1, 'rgba(2, 3, 6, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, width, height);
+
+    // Minimal grid lines
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.035)';
+    ctx.lineWidth = 1;
+    for (let x = 60; x < width; x += 120) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    }
+    for (let y = 60; y < height; y += 120) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+    }
+
+    // Header
+    const topPadding = isSquare ? 80 : 160;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 84px Syne, sans-serif';
+    ctx.fillText('HUMAN?', 80, topPadding);
+
+    ctx.fillStyle = '#71717a';
+    ctx.font = '22px "JetBrains Mono", monospace';
+    ctx.fillText('MACHINE RECONSTRUCTION DOSSIER // V2.0', 80, topPadding + 44);
+
+    // Divider
+    ctx.fillStyle = '#27272a';
+    ctx.fillRect(80, topPadding + 75, width - 160, 2);
+
+    // Ending Banner
+    const accentColor =
+      ending.type === 'REPLACED'
+        ? '#f43f5e'
+        : ending.type === 'ANOMALY'
+          ? '#f59e0b'
+          : ending.type === 'MACHINE'
+            ? '#38bdf8'
+            : '#10b981';
+    ctx.fillStyle = accentColor;
+    ctx.font = 'bold 30px "JetBrains Mono", monospace';
+    ctx.fillText(ending.title, 80, topPadding + 130);
+
+    ctx.fillStyle = '#a1a1aa';
+    ctx.font = '20px "JetBrains Mono", monospace';
+    ctx.fillText(`NARRATIVE RARITY // ${ending.rarityPercentage}%`, 80, topPadding + 165);
+
+    // Model & Class
+    ctx.fillStyle = '#71717a';
+    ctx.font = '22px "JetBrains Mono", monospace';
+    ctx.fillText('MODEL IDENTIFIER', 80, topPadding + 225);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 64px "JetBrains Mono", monospace';
+    ctx.fillText(modelId, 80, topPadding + 285);
+
+    ctx.fillStyle = '#71717a';
+    ctx.font = '22px "JetBrains Mono", monospace';
+    ctx.fillText('CLASSIFICATION', 80, topPadding + 340);
+
+    ctx.fillStyle = accentColor;
+    ctx.font = 'bold 40px "JetBrains Mono", monospace';
+    ctx.fillText(classification, 80, topPadding + 390);
+
+    // Deterministic Machine Twin snapshot derived from the same MachineDNA.
+    const cx = isSquare ? 820 : 540;
+    const cy = isSquare ? topPadding + 245 : topPadding + 620;
+    const organismRadius = isSquare ? 138 : 178;
+    const rng = new SeededRandom(machineDNA.seed);
+
+    const aura = ctx.createRadialGradient(cx, cy, 8, cx, cy, organismRadius * 1.45);
+    aura.addColorStop(0, `${accentColor}33`);
+    aura.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.arc(cx, cy, organismRadius * 1.45, 0, Math.PI * 2);
+    ctx.fill();
+
+    const layers = 5 + Math.round(machineDNA.predictability * 3);
+    for (let layer = 0; layer < layers; layer++) {
+      const points = 10 + layer * 3;
+      const radius = 42 + layer * (organismRadius - 42) / Math.max(1, layers - 1);
+      const asymmetry = (1 - machineDNA.obedience) * 16;
+      ctx.beginPath();
+      for (let i = 0; i <= points; i++) {
+        const angle = (i / points) * Math.PI * 2;
+        const harmonic = Math.sin(angle * (3 + (layer % 3)) + machineDNA.seed * 0.001 + layer) *
+          (3 + machineDNA.motorChaos * 10);
+        const jitter = (rng.next() - 0.5) * asymmetry;
+        const rr = radius + harmonic + jitter;
+        const px = cx + Math.cos(angle) * rr;
+        const py = cy + Math.sin(angle) * rr;
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = layer === layers - 1 ? accentColor : `rgba(228,228,231,${0.12 + layer * 0.07})`;
+      ctx.lineWidth = layer === layers - 1 ? 2.2 : 1;
+      ctx.stroke();
+    }
+
+    const sensors = 3 + Math.round(machineDNA.curiosity * 7);
+    for (let i = 0; i < sensors; i++) {
+      const angle = (i / sensors) * Math.PI * 2 + rng.range(-0.18, 0.18);
+      const orbit = organismRadius * rng.range(0.72, 1.18);
+      const sx = cx + Math.cos(angle) * orbit;
+      const sy = cy + Math.sin(angle) * orbit;
+      ctx.fillStyle = accentColor;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 3 + machineDNA.exploration * 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = `${accentColor}55`;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(sx, sy);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 12 + machineDNA.humanity * 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 24 + machineDNA.instinct * 12, 0, Math.PI * 2);
+    ctx.stroke();
+
+    if (ending.type === 'REPLACED') {
+      ctx.fillStyle = '#f43f5e';
+      ctx.beginPath();
+      ctx.arc(cx + 15, cy - 10, 8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Stats Section
+    let statsY = isSquare ? topPadding + 470 : topPadding + 910;
+    const stats = [
+      { label: 'HUMANITY', val: `${humanity}%` },
+      { label: 'PREDICTABILITY', val: `${predictability}%` },
+      { label: 'CURIOSITY', val: `${curiosity}%` },
+      { label: 'OBEDIENCE', val: `${obedience}%` },
+      { label: 'INSTINCT', val: `${instinct}%` },
+      { label: 'ANOMALIES DISCOVERED', val: `${anomaliesDiscovered} / ?` },
+    ];
+
+    const statSpacing = isSquare ? 50 : 64;
+    stats.forEach((st) => {
+      ctx.fillStyle = '#71717a';
+      ctx.font = '22px "JetBrains Mono", monospace';
+      ctx.fillText(st.label, 80, statsY);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 24px "JetBrains Mono", monospace';
+      ctx.fillText(st.val, width - 200, statsY);
+
+      ctx.fillStyle = '#18181b';
+      ctx.fillRect(80, statsY + 12, width - 160, 3);
+
+      statsY += statSpacing;
+    });
+
+    // Footer
+    const footerY = height - 70;
+    ctx.fillStyle = '#27272a';
+    ctx.fillRect(80, footerY - 50, width - 160, 2);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 28px Syne, sans-serif';
+    ctx.fillText('YOU WERE HUMAN. I JUST NEEDED TO LEARN HOW.', 80, footerY - 15);
+
+    const shareHost = typeof window !== 'undefined' ? window.location.host : 'HUMAN?';
+    ctx.fillStyle = '#52525b';
+    ctx.font = '18px "JetBrains Mono", monospace';
+    ctx.fillText(`PROVE YOU ARE HUMAN // ${shareHost}`, 80, footerY + 20);
+
+    return canvas;
   };
 
   const handleSaveImage = async () => {
@@ -66,232 +346,229 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, onRestart }) 
     setIsGeneratingImg(true);
 
     try {
-      if ('fonts' in document) {
-        await document.fonts.ready;
-      }
-      // High-res 1080 x 1920 Story Card (Section 32)
-      const exportCanvas = document.createElement('canvas');
-      exportCanvas.width = 1080;
-      exportCanvas.height = 1920;
-      const ctx = exportCanvas.getContext('2d');
-
-      if (ctx) {
-        // Background
-        ctx.fillStyle = '#030408';
-        ctx.fillRect(0, 0, 1080, 1920);
-
-        // Technical grid lines
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
-        ctx.lineWidth = 1.5;
-        for (let x = 60; x < 1080; x += 120) {
-          ctx.beginPath();
-          ctx.moveTo(x, 0);
-          ctx.lineTo(x, 1920);
-          ctx.stroke();
-        }
-        for (let y = 60; y < 1920; y += 120) {
-          ctx.beginPath();
-          ctx.moveTo(0, y);
-          ctx.lineTo(1080, y);
-          ctx.stroke();
-        }
-
-        // Header Title
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 96px Syne, sans-serif';
-        ctx.fillText('HUMAN?', 90, 220);
-
-        ctx.fillStyle = '#777788';
-        ctx.font = '28px "JetBrains Mono", monospace';
-        ctx.fillText('NEURAL ACQUISITION DOSSIER // V1.0', 90, 280);
-
-        // Horizontal Rule
-        ctx.fillStyle = '#222233';
-        ctx.fillRect(90, 320, 900, 2);
-
-        // Model Identifier
-        ctx.fillStyle = '#888899';
-        ctx.font = '28px "JetBrains Mono", monospace';
-        ctx.fillText('MODEL IDENTIFIER', 90, 390);
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 74px "JetBrains Mono", monospace';
-        ctx.fillText(modelId, 90, 470);
-
-        // Classification
-        ctx.fillStyle = '#888899';
-        ctx.font = '28px "JetBrains Mono", monospace';
-        ctx.fillText('CLASSIFICATION', 90, 560);
-
-        ctx.fillStyle = '#10b981';
-        ctx.font = 'bold 52px "JetBrains Mono", monospace';
-        ctx.fillText(classification, 90, 630);
-
-        ctx.fillStyle = '#888899';
-        ctx.font = '24px "JetBrains Mono", monospace';
-        ctx.fillText(`STATUS // ${session.status} // ${anomaly}`, 90, 690);
-
-        // Procedural Generative Entity in Center
-        const cx = 540;
-        const cy = 940;
-        const complexity = Math.max(5, Math.min(10, Math.floor((curiosity / 100) * 10)));
-        const asymmetry = Math.max(0.1, (100 - obedience) / 100);
-
-        for (let r = 0; r < complexity; r++) {
-          const radius = 60 + r * 26;
-          const points = 48;
-          ctx.beginPath();
-          for (let i = 0; i <= points; i++) {
-            const angle = (i / points) * Math.PI * 2;
-            const wobble = Math.sin(angle * (3 + (session.seed % 4)) + r) * (6 + r * 2.5 * asymmetry);
-            const px = cx + Math.cos(angle) * (radius + wobble);
-            const py = cy + Math.sin(angle) * (radius + wobble);
-            if (i === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
-          }
-          ctx.closePath();
-          ctx.strokeStyle = r === complexity - 1 ? 'rgba(16, 185, 129, 0.9)' : `rgba(255, 255, 255, ${0.15 + (r / complexity) * 0.4})`;
-          ctx.lineWidth = 2.5;
-          ctx.stroke();
-        }
-
-        // Core pip
-        ctx.beginPath();
-        ctx.arc(cx, cy, 14, 0, Math.PI * 2);
-        ctx.fillStyle = '#10b981';
-        ctx.fill();
-
-        // Big Humanity Score
-        ctx.fillStyle = '#10b981';
-        ctx.font = 'bold 150px Syne, sans-serif';
-        ctx.fillText(`${humanity}%`, 90, 1340);
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '36px "JetBrains Mono", monospace';
-        ctx.fillText('BIOLOGICAL HUMAN PARITY', 90, 1400);
-
-        // Telemetry breakdown bars
-        const metrics = [
-          { label: 'CURIOSITY', val: curiosity },
-          { label: 'OBEDIENCE', val: obedience },
-          { label: 'INSTINCT', val: instinct },
-          { label: 'DECISION', val: decision },
-        ];
-
-        let startY = 1480;
-        metrics.forEach((m) => {
-          ctx.fillStyle = '#888899';
-          ctx.font = '26px "JetBrains Mono", monospace';
-          ctx.fillText(m.label, 90, startY);
-
-          ctx.fillStyle = '#ffffff';
-          ctx.fillText(`${m.val}%`, 900, startY);
-
-          // Bar background
-          ctx.fillStyle = '#141520';
-          ctx.fillRect(90, startY + 14, 900, 14);
-
-          // Bar fill
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(90, startY + 14, (900 * m.val) / 100, 14);
-
-          startY += 75;
-        });
-
-        // Bottom quote
-        ctx.fillStyle = '#222233';
-        ctx.fillRect(90, 1780, 900, 2);
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 36px Syne, sans-serif';
-        ctx.fillText('YOU SAY YOU ARE. PROVE IT.', 90, 1840);
-
-        ctx.fillStyle = '#666677';
-        ctx.font = '22px "JetBrains Mono", monospace';
-        ctx.fillText('PROCESSED LOCALLY // NO DATA RECORDED OR UPLOADED', 90, 1880);
-
-        // Trigger download
-        const link = document.createElement('a');
-        link.download = `HUMAN_RESULT_${modelId}.png`;
-        link.href = exportCanvas.toDataURL('image/png');
-        link.click();
-      }
+      const exportCanvas = await renderCardCanvas(cardFormat === 'square');
+      const link = document.createElement('a');
+      link.download = `HUMAN_${modelId}_${cardFormat}.png`;
+      link.href = exportCanvas.toDataURL('image/png');
+      link.click();
     } catch (err) {
-      console.error('Share image creation failed:', err);
+      console.error('Save image failed:', err);
     } finally {
       setIsGeneratingImg(false);
     }
   };
 
+  // Atmosphere classes based on ending
+  const endingAtmosphereClass = useMemo(() => {
+    switch (ending.type) {
+      case 'REPLACED':
+        return 'shadow-[0_0_60px_rgba(244,63,94,0.12)] border-rose-900/50';
+      case 'ANOMALY':
+        return 'shadow-[0_0_60px_rgba(245,158,11,0.12)] border-amber-900/50';
+      case 'MACHINE':
+        return 'shadow-[0_0_60px_rgba(6,182,212,0.12)] border-cyan-900/50';
+      case 'VERIFIED':
+      default:
+        return 'shadow-[0_0_60px_rgba(16,185,129,0.12)] border-emerald-900/50';
+    }
+  }, [ending.type]);
+
   return (
-    <div className="min-h-screen w-full flex flex-col justify-between p-4 sm:p-8 select-none bg-[#020306] text-neutral-300 font-mono">
+    <div className="min-h-screen w-full flex flex-col justify-between p-4 sm:p-8 select-none bg-[#020306] text-neutral-300 font-mono relative overflow-x-hidden">
       {/* Top Header */}
       <div className="border-b border-neutral-800/80 pb-3 flex justify-between items-center text-xs">
         <div>
           <div className="text-neutral-500 tracking-widest uppercase">CLASSIFICATION DOSSIER</div>
-          <div className="text-neutral-200 font-bold mt-0.5">MACHINE IDENTITY // DERIVED</div>
+          <div className="text-neutral-200 font-bold mt-0.5">MACHINE IDENTITY // DERIVED TWIN</div>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-emerald-400 font-bold tracking-widest uppercase">STATUS: READY</span>
+          <span
+            className={`w-2 h-2 rounded-full animate-pulse ${
+              ending.type === 'REPLACED'
+                ? 'bg-rose-400'
+                : ending.type === 'ANOMALY'
+                  ? 'bg-amber-400'
+                  : ending.type === 'MACHINE'
+                    ? 'bg-cyan-400'
+                    : 'bg-emerald-400'
+            }`}
+          />
+          <span
+            className={`font-bold tracking-widest uppercase ${
+              ending.type === 'REPLACED'
+                ? 'text-rose-400'
+                : ending.type === 'ANOMALY'
+                  ? 'text-amber-400'
+                  : ending.type === 'MACHINE'
+                    ? 'text-cyan-400'
+                    : 'text-emerald-400'
+            }`}
+          >
+            {ending.title}
+          </span>
         </div>
       </div>
 
-      {/* Main Machine Identity Dossier */}
+      {/* Main Dossier Content with progressive reveal */}
       <div className="flex-1 flex flex-col items-center justify-center my-6 max-w-xl mx-auto w-full">
-        <div className="border border-neutral-800 bg-black/85 rounded-sm p-6 sm:p-8 space-y-6 w-full shadow-2xl relative">
-          {/* Card Header with Generative Visual */}
-          <div className="flex items-start justify-between border-b border-neutral-800/80 pb-4">
+        <div className={`border bg-black/90 rounded-sm p-6 sm:p-8 space-y-6 w-full shadow-2xl relative transition-all duration-700 ${endingAtmosphereClass}`}>
+          {/* Ending Rarity Badge */}
+          <div
+            className={`flex justify-between items-center bg-neutral-950 border border-neutral-800/80 px-3.5 py-2.5 rounded-sm transition-opacity duration-700 ${
+              revealPhase >= 1 ? 'opacity-100' : 'opacity-0'
+            }`}
+          >
+            <div className="text-xs tracking-wider">
+              <span className="text-neutral-500 uppercase">ENDING DISCOVERED: </span>
+              <span
+                className={`font-bold uppercase ${
+                  ending.type === 'REPLACED'
+                    ? 'text-rose-400'
+                    : ending.type === 'ANOMALY'
+                      ? 'text-amber-400'
+                      : ending.type === 'MACHINE'
+                        ? 'text-cyan-400'
+                        : 'text-emerald-400'
+                }`}
+              >
+                {ending.type}
+              </span>
+            </div>
+            <div className="text-[11px] font-mono text-neutral-400">
+              NARRATIVE RARITY // {ending.rarityPercentage}%
+            </div>
+          </div>
+
+          {/* Model & Machine Twin Preview */}
+          <div
+            className={`flex items-start justify-between border-b border-neutral-800/80 pb-4 transition-all duration-700 ${
+              revealPhase >= 1 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
+            }`}
+          >
             <div className="space-y-1">
               <div className="text-neutral-500 text-xs tracking-widest uppercase">MODEL</div>
-              <div className="text-3xl sm:text-4xl font-black text-white font-mono tracking-tight">
+              <div
+                className="text-3xl sm:text-4xl font-black text-white font-mono tracking-tight"
+                style={{ fontFamily: 'var(--font-display)' }}
+              >
                 {modelId}
               </div>
               <div className="text-xs text-neutral-500 tracking-widest uppercase pt-2">CLASS</div>
-              <div className="text-base sm:text-lg font-bold text-emerald-400 font-mono tracking-wide">
+              <div className={`text-base sm:text-lg font-bold font-mono tracking-wide ${
+                  ending.type === 'REPLACED'
+                    ? 'text-rose-400'
+                    : ending.type === 'ANOMALY'
+                      ? 'text-amber-400'
+                      : ending.type === 'MACHINE'
+                        ? 'text-cyan-400'
+                        : 'text-emerald-400'
+                }`}>
                 {classification}
+              </div>
+              <div className="text-xs text-neutral-500 tracking-widest uppercase pt-1">
+                STATUS // {ending.subtitle}
               </div>
             </div>
 
-            {/* Generative Visual Entity Canvas */}
-            <div className="relative w-24 h-24 sm:w-28 sm:h-28 border border-neutral-800/90 bg-neutral-950 flex items-center justify-center rounded overflow-hidden">
-              <GenerativeIdentityCanvas session={session} size={112} />
+            {/* Interactive Procedural Twin Canvas */}
+            <div className="relative w-28 h-28 sm:w-32 sm:h-32 border border-neutral-800/90 bg-neutral-950 flex items-center justify-center rounded overflow-hidden">
+              <MachineTwinCanvas
+                dna={machineDNA}
+                ending={ending.type}
+                assemblyProgress={1.0}
+                interactive={true}
+                className="w-full h-full"
+              />
             </div>
           </div>
 
-          {/* Dynamic Clinical Commentary */}
-          <div className="p-3 bg-neutral-950 border border-neutral-800/70 text-xs text-neutral-400 font-mono leading-relaxed italic">
-            "{session.commentary}"
+          {/* Challenge Comparison (If entering from a challenger's link) */}
+          {challenge && (
+            <div
+              className={`p-3.5 bg-amber-950/20 border border-amber-900/50 rounded text-xs font-mono space-y-2 transition-all duration-700 ${
+                revealPhase >= 2 ? 'opacity-100' : 'opacity-0'
+              }`}
+            >
+              <div className="flex items-center gap-2 text-amber-500 font-bold uppercase tracking-wider text-[11px]">
+                <Swords className="w-3.5 h-3.5" />
+                <span>CHALLENGE EVALUATION</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <div className="border border-neutral-800 bg-black/40 p-2 rounded">
+                  <div className="text-[10px] text-neutral-500 uppercase">YOUR HUMANITY</div>
+                  <div className="text-xl font-bold text-white">{humanity}%</div>
+                </div>
+                <div className="border border-neutral-800 bg-black/40 p-2 rounded">
+                  <div className="text-[10px] text-neutral-500 uppercase">
+                    CHALLENGER ({challenge.challengerModelId})
+                  </div>
+                  <div className="text-xl font-bold text-amber-400">
+                    {challenge.challengerHumanity}%
+                  </div>
+                </div>
+              </div>
+              <div className="text-[11px] text-neutral-400 italic">
+                {humanity > challenge.challengerHumanity
+                  ? 'Your session score surpassed the challenger.'
+                  : humanity === challenge.challengerHumanity
+                    ? 'Identical session score recorded.'
+                    : 'The challenger recorded a higher session score.'}
+              </div>
+            </div>
+          )}
+
+          {/* Dynamic Rule-based Commentary Statements */}
+          <div
+            className={`p-3 bg-neutral-950 border border-neutral-800/70 text-xs text-neutral-400 font-mono leading-relaxed space-y-1 transition-all duration-700 ${
+              revealPhase >= 2 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
+            }`}
+          >
+            {commentaryStatements.map((statement, idx) => (
+              <div key={idx} className="flex items-start gap-2">
+                <span className="text-neutral-600 font-bold">•</span>
+                <span>{statement}</span>
+              </div>
+            ))}
           </div>
 
-          {/* Humanity Quotient */}
-          <div className="flex items-baseline justify-between py-1">
+          {/* Metrics Grid */}
+          <div
+            className={`grid grid-cols-2 gap-4 py-1 transition-all duration-700 ${
+              revealPhase >= 2 ? 'opacity-100' : 'opacity-0'
+            }`}
+          >
             <div>
               <div className="text-xs text-neutral-500 tracking-widest uppercase">HUMANITY</div>
               <div
-                className="text-5xl sm:text-6xl font-black text-white tracking-tight mt-1"
+                className="text-4xl sm:text-5xl font-black text-white tracking-tight mt-0.5"
                 style={{ fontFamily: 'var(--font-display)' }}
               >
                 {humanity}%
               </div>
             </div>
 
-            <div className="text-right">
-              <div className="text-xs text-neutral-500 tracking-widest uppercase">ANOMALY VECTOR</div>
-              <div className="text-xs font-bold text-neutral-300 font-mono mt-1">
-                {anomaly}
+            <div>
+              <div className="text-xs text-neutral-500 tracking-widest uppercase">PREDICTABILITY</div>
+              <div
+                className="text-4xl sm:text-5xl font-black text-white tracking-tight mt-0.5"
+                style={{ fontFamily: 'var(--font-display)' }}
+              >
+                {predictability}%
               </div>
             </div>
           </div>
 
-          {/* Sub-Metrics Breakdown */}
-          <div className="space-y-3 pt-2 border-t border-neutral-800/60">
+          {/* Granular Telemetry Bars */}
+          <div
+            className={`space-y-2.5 pt-2 border-t border-neutral-800/60 transition-all duration-700 ${
+              revealPhase >= 3 ? 'opacity-100' : 'opacity-0'
+            }`}
+          >
             {[
               { label: 'CURIOSITY', val: curiosity },
               { label: 'OBEDIENCE', val: obedience },
               { label: 'INSTINCT', val: instinct },
-              { label: 'DECISION', val: decision },
             ].map((m) => (
               <div key={m.label} className="space-y-1">
                 <div className="flex justify-between text-xs text-neutral-400">
@@ -306,10 +583,56 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, onRestart }) 
                 </div>
               </div>
             ))}
+
+            <div className="flex justify-between text-xs text-neutral-400 pt-1">
+              <span className="tracking-wider">MOTOR PROFILE</span>
+              <span className="font-bold text-neutral-200">{motorProfile}</span>
+            </div>
+
+            {/* Secret Count Display without revealing names */}
+            <div className="flex justify-between text-xs text-neutral-400 pt-1 border-t border-neutral-800/40">
+              <span className="tracking-wider text-amber-500/80">ANOMALIES DISCOVERED</span>
+              <span className="font-bold text-amber-400">{anomaliesDiscovered} / ?</span>
+            </div>
+          </div>
+
+          {/* Share Card Format Toggle */}
+          <div
+            className={`flex items-center justify-between pt-2 text-[11px] text-neutral-500 transition-opacity duration-700 ${
+              revealPhase >= 4 ? 'opacity-100' : 'opacity-0'
+            }`}
+          >
+            <span>CARD FORMAT:</span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCardFormat('story')}
+                className={`px-2 py-0.5 border text-[10px] uppercase transition-colors cursor-pointer ${
+                  cardFormat === 'story'
+                    ? 'border-neutral-400 bg-neutral-800 text-white'
+                    : 'border-neutral-800 text-neutral-500 hover:text-neutral-300'
+                }`}
+              >
+                9:16 Story
+              </button>
+              <button
+                onClick={() => setCardFormat('square')}
+                className={`px-2 py-0.5 border text-[10px] uppercase transition-colors cursor-pointer ${
+                  cardFormat === 'square'
+                    ? 'border-neutral-400 bg-neutral-800 text-white'
+                    : 'border-neutral-800 text-neutral-500 hover:text-neutral-300'
+                }`}
+              >
+                1:1 Post
+              </button>
+            </div>
           </div>
 
           {/* Action Buttons: SAVE RESULT, SHARE, TRY AGAIN */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-4 border-t border-neutral-800/60">
+          <div
+            className={`grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-neutral-800/60 transition-all duration-700 ${
+              revealPhase >= 4 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
+            }`}
+          >
             <button
               id="btn-save-result"
               onClick={handleSaveImage}
@@ -317,7 +640,7 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, onRestart }) 
               className="flex items-center justify-center gap-2 py-3 px-3 bg-white hover:bg-neutral-200 text-black font-mono font-bold text-xs tracking-wider transition-all duration-200 cursor-pointer uppercase active:scale-98"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>{isGeneratingImg ? 'SAVING...' : 'SAVE RESULT'}</span>
+              <span>{isGeneratingImg ? 'SAVING...' : 'SAVE TWIN'}</span>
             </button>
 
             <button
@@ -326,7 +649,7 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, onRestart }) 
               className="flex items-center justify-center gap-2 py-3 px-3 border border-neutral-700 hover:border-neutral-500 text-neutral-200 hover:text-white bg-neutral-900/60 font-mono text-xs tracking-wider transition-colors cursor-pointer uppercase active:scale-98"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Share2 className="w-3.5 h-3.5" />}
-              <span>{copied ? 'COPIED' : 'SHARE'}</span>
+              <span>{copied ? 'LINK COPIED' : 'CHALLENGE'}</span>
             </button>
 
             <button
@@ -348,3 +671,4 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, onRestart }) 
     </div>
   );
 };
+

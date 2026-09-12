@@ -1,17 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useSceneTimers } from '../utils/useSceneTimers';
 import { sound } from '../audio/AudioEngine';
 import { MotorMetrics } from '../types';
 import { PointerTracker } from '../tracking/PointerTracker';
 import { BehaviorEngine } from '../behavior/BehaviorEngine';
+import { sessionMemory } from '../memory/SessionMemory';
 
 interface MotorTestSceneProps {
   onComplete: (metrics: MotorMetrics) => void;
 }
 
 export const MotorTestScene: React.FC<MotorTestSceneProps> = ({ onComplete }) => {
+  const { setSceneTimeout } = useSceneTimers();
   const [clickCount, setClickCount] = useState<number>(0);
-  const [targetPos, setTargetPos] = useState<{ x: number; y: number }>({ x: 50, y: 50 });
+  const [targetPos, setTargetPos] = useState<{ x: number; y: number }>({ x: 32, y: 42 });
   const [targetScale, setTargetScale] = useState<number>(1);
+  const [instructionHint, setInstructionHint] = useState<string>('ACQUIRE CALIBRATION TARGET');
   const [metrics, setMetrics] = useState<MotorMetrics>({
     velocity: 0.0,
     trajectory: 'linear',
@@ -28,20 +32,59 @@ export const MotorTestScene: React.FC<MotorTestSceneProps> = ({ onComplete }) =>
   const targetSpawnTimeRef = useRef<number>(performance.now());
   const reactionsRef = useRef<number[]>([]);
   const roundMetricsRef = useRef<MotorMetrics[]>([]);
-  const targetScales = [1.0, 0.85, 1.15];
+  const targetScales = [1.0, 0.9, 1.1];
 
-  // 3 distinct calibrated target locations (percentage coords)
-  const targetLocations = [
+  // 3 calibrated base target coordinates (% of container)
+  const targetBaseLocations = [
     { x: 32, y: 42 },
-    { x: 68, y: 62 },
-    { x: 48, y: 35 },
+    { x: 68, y: 58 },
+    { x: 48, y: 36 },
   ];
 
+  // Round 2 continuous subtle movement offset
+  const animFrameRef = useRef<number | null>(null);
+
+  // Round 3 deceptive dodge flag
+  const hasDodgedRef = useRef<boolean>(false);
+
   useEffect(() => {
-    setTargetPos(targetLocations[0]);
+    setTargetPos(targetBaseLocations[0]);
     setTargetScale(targetScales[0]);
     targetSpawnTimeRef.current = performance.now();
+    setInstructionHint('TARGET 01: CALIBRATE STATIC VELOCITY');
+
+    return () => {
+      if (animFrameRef.current !== null) cancelAnimationFrame(animFrameRef.current);
+    };
   }, []);
+
+  // Round 2 continuous subtle drift loop
+  useEffect(() => {
+    if (clickCount === 1) {
+      setInstructionHint('TARGET 02: DYNAMIC DRIFT TRACKING');
+      let startT = performance.now();
+      const base = targetBaseLocations[1];
+
+      const drift = (now: number) => {
+        const elapsed = (now - startT) / 1000;
+        // Subtle, smooth harmonic oscillation (±3.5% horizontal, ±2.5% vertical)
+        const dx = Math.sin(elapsed * 1.8) * 3.8;
+        const dy = Math.cos(elapsed * 1.4) * 2.8;
+        setTargetPos({ x: base.x + dx, y: base.y + dy });
+        animFrameRef.current = requestAnimationFrame(drift);
+      };
+
+      animFrameRef.current = requestAnimationFrame(drift);
+      return () => {
+        if (animFrameRef.current !== null) cancelAnimationFrame(animFrameRef.current);
+      };
+    } else if (clickCount === 2) {
+      if (animFrameRef.current !== null) cancelAnimationFrame(animFrameRef.current);
+      setInstructionHint('TARGET 03: COMPENSATION REFLEX TEST');
+      setTargetPos(targetBaseLocations[2]);
+      hasDodgedRef.current = false;
+    }
+  }, [clickCount]);
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!containerRef.current || isAccepted) return;
@@ -52,13 +95,30 @@ export const MotorTestScene: React.FC<MotorTestSceneProps> = ({ onComplete }) =>
 
     pointerTrackerRef.current.push(x, y, e.pointerType, t);
 
+    const targetPixel = {
+      x: (targetPos.x / 100) * rect.width,
+      y: (targetPos.y / 100) * rect.height,
+    };
+
+    // Round 3: Subtle deceptive movement (micro-dodge once when pointer gets close)
+    if (clickCount === 2 && !hasDodgedRef.current) {
+      const distToPointer = Math.hypot(x - targetPixel.x, y - targetPixel.y);
+      if (distToPointer < 65 && distToPointer > 10) {
+        hasDodgedRef.current = true;
+        sound.playScanPulse();
+        // Shift target subtly by ~4% to induce biological correction
+        const dodgeX = x < targetPixel.x ? 5 : -5;
+        const dodgeY = y < targetPixel.y ? 4.5 : -4.5;
+        setTargetPos((prev) => ({
+          x: Math.max(15, Math.min(85, prev.x + dodgeX)),
+          y: Math.max(18, Math.min(82, prev.y + dodgeY)),
+        }));
+      }
+    }
+
     // Live telemetry update
     const samples = pointerTrackerRef.current.getSamples();
     if (samples.length >= 3) {
-      const targetPixel = {
-        x: (targetPos.x / 100) * rect.width,
-        y: (targetPos.y / 100) * rect.height,
-      };
       const telemetry = BehaviorEngine.analyzePointerStream(samples, 0, targetPixel);
       setMetrics((prev) => ({
         ...prev,
@@ -78,6 +138,7 @@ export const MotorTestScene: React.FC<MotorTestSceneProps> = ({ onComplete }) =>
     const now = performance.now();
     const reaction = Math.round(now - targetSpawnTimeRef.current);
     reactionsRef.current.push(reaction);
+    sessionMemory.recordReactionTime(reaction);
 
     const rect = containerRef.current?.getBoundingClientRect();
     const targetPixel = rect
@@ -94,10 +155,6 @@ export const MotorTestScene: React.FC<MotorTestSceneProps> = ({ onComplete }) =>
     const nextCount = clickCount + 1;
     setClickCount(nextCount);
 
-    const avgReaction = Math.round(
-      reactionsRef.current.reduce((sum, val) => sum + val, 0) / reactionsRef.current.length
-    );
-
     const currentMetrics: MotorMetrics = {
       velocity: telemetry.averageSpeed,
       trajectory: telemetry.trajectory,
@@ -113,23 +170,18 @@ export const MotorTestScene: React.FC<MotorTestSceneProps> = ({ onComplete }) =>
     };
     roundMetricsRef.current.push(currentMetrics);
 
-    /* Aggregate the three rounds through the behavior engine so downstream
-       scoring receives one genuine session-level motor profile. */
     const aggregateMetrics = BehaviorEngine.aggregateMotorRounds(roundMetricsRef.current);
-
     setMetrics(aggregateMetrics);
 
     if (nextCount < 3) {
-      // Advance to next target round
       targetSpawnTimeRef.current = performance.now();
-      setTargetPos(targetLocations[nextCount]);
+      setTargetPos(targetBaseLocations[nextCount]);
       setTargetScale(targetScales[nextCount]);
       pointerTrackerRef.current.clear();
     } else {
-      // Completed exactly 3 rounds
       setIsAccepted(true);
       sound.playAcceptedTick();
-      setTimeout(() => {
+      setSceneTimeout(() => {
         onComplete(aggregateMetrics);
       }, 1500);
     }
@@ -148,6 +200,7 @@ export const MotorTestScene: React.FC<MotorTestSceneProps> = ({ onComplete }) =>
           <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white mt-1">
             CLICK LIKE A HUMAN
           </h2>
+          <div className="text-[11px] text-neutral-400 mt-0.5 tracking-wider">{instructionHint}</div>
         </div>
         <div className="mt-2 sm:mt-0 text-xs text-neutral-400">
           TARGET SAMPLE: <span className="text-emerald-400 font-bold">{Math.min(3, clickCount + 1)} / 3</span>
@@ -194,7 +247,7 @@ export const MotorTestScene: React.FC<MotorTestSceneProps> = ({ onComplete }) =>
           <div
             onPointerDown={handleTargetClick}
             id="motor-target"
-            className="absolute transition-all duration-300 ease-out cursor-crosshair transform -translate-x-1/2 -translate-y-1/2 p-4 group"
+            className="absolute transition-transform duration-100 ease-out cursor-crosshair transform -translate-x-1/2 -translate-y-1/2 p-4 group"
             style={{
               left: `${targetPos.x}%`,
               top: `${targetPos.y}%`,
@@ -217,7 +270,7 @@ export const MotorTestScene: React.FC<MotorTestSceneProps> = ({ onComplete }) =>
               MOTOR SAMPLE ACCEPTED
             </div>
             <p className="text-xs text-neutral-500 font-mono tracking-wider">
-              Pattern matches biological neuromuscular irregularity.
+              Pattern contains natural correction variance.
             </p>
           </div>
         )}
@@ -225,7 +278,7 @@ export const MotorTestScene: React.FC<MotorTestSceneProps> = ({ onComplete }) =>
 
       {/* Footer Instructions */}
       <div className="border-t border-neutral-800/80 pt-3 text-center text-xs text-neutral-500 font-mono">
-        Acquiring neuromuscular feedback and pointer acceleration curve.
+        Acquiring pointer feedback and acceleration curve.
       </div>
     </div>
   );

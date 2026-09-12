@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useSceneTimers } from '../utils/useSceneTimers';
 import { sound } from '../audio/AudioEngine';
+import { sessionMemory } from '../memory/SessionMemory';
 
 interface InstinctTestSceneProps {
   seed: number;
@@ -7,6 +9,7 @@ interface InstinctTestSceneProps {
 }
 
 export const InstinctTestScene: React.FC<InstinctTestSceneProps> = ({ seed, onComplete }) => {
+  const { setSceneTimeout } = useSceneTimers();
   const [hoveredShape, setHoveredShape] = useState<number | null>(null);
   const [selectedShape, setSelectedShape] = useState<number | null>(null);
   const [feedbackStage, setFeedbackStage] = useState<number>(0);
@@ -20,18 +23,25 @@ export const InstinctTestScene: React.FC<InstinctTestSceneProps> = ({ seed, onCo
   const canvas3Ref = useRef<HTMLCanvasElement>(null);
   const canvas4Ref = useRef<HTMLCanvasElement>(null);
 
+  // Reaction multiplier for selected specimen
+  const excitationRef = useRef<number>(1.0);
+
   useEffect(() => {
     startTimeRef.current = Date.now();
 
-    // Procedural animation loop for the 4 generative shapes
     let animId: number;
     let frame = 0;
 
     const render = () => {
       frame++;
-      const t = frame * 0.035;
+      // If a shape was selected, accelerate the excitation
+      if (selectedShape !== null && excitationRef.current < 2.8) {
+        excitationRef.current += 0.04;
+      }
+      const speedMult = excitationRef.current;
+      const t = frame * 0.035 * speedMult;
 
-      // 1. Amoeba Blob
+      // 1. Amoeba Blob with Organic Pseudopods
       const c1 = canvas1Ref.current;
       if (c1) {
         const ctx = c1.getContext('2d');
@@ -40,12 +50,12 @@ export const InstinctTestScene: React.FC<InstinctTestSceneProps> = ({ seed, onCo
           const cx = c1.width / 2;
           const cy = c1.height / 2;
           ctx.beginPath();
-          const baseR = 45;
+          const baseR = 44 + (selectedShape === 0 ? Math.sin(t * 3) * 6 : 0);
           const points = 36;
           for (let i = 0; i <= points; i++) {
             const angle = (i / points) * Math.PI * 2;
-            const wave1 = Math.sin(angle * 4 + t * 1.5) * 6;
-            const wave2 = Math.cos(angle * 3 - t * 1.1) * 5;
+            const wave1 = Math.sin(angle * 4 + t * 1.6) * (6 * (selectedShape === 0 ? 1.8 : 1));
+            const wave2 = Math.cos(angle * 3 - t * 1.2) * (5 * (selectedShape === 0 ? 1.5 : 1));
             const r = baseR + wave1 + wave2;
             const x = cx + Math.cos(angle) * r;
             const y = cy + Math.sin(angle) * r;
@@ -53,22 +63,22 @@ export const InstinctTestScene: React.FC<InstinctTestSceneProps> = ({ seed, onCo
             else ctx.lineTo(x, y);
           }
           ctx.closePath();
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+          ctx.fillStyle = selectedShape === 0 ? 'rgba(52, 211, 153, 0.12)' : 'rgba(255, 255, 255, 0.04)';
           ctx.fill();
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = selectedShape === 0 ? 'rgba(52, 211, 153, 0.9)' : 'rgba(255, 255, 255, 0.75)';
+          ctx.lineWidth = selectedShape === 0 ? 2.5 : 1.5;
           ctx.stroke();
 
           // Internal nucleus
           ctx.beginPath();
-          const nR = 8 + Math.sin(t * 3) * 2;
-          ctx.arc(cx + Math.cos(t) * 4, cy + Math.sin(t * 1.2) * 4, nR, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+          const nR = (selectedShape === 0 ? 12 : 8) + Math.sin(t * 3.5) * 3;
+          ctx.arc(cx + Math.cos(t * 1.2) * 5, cy + Math.sin(t * 1.5) * 5, Math.max(3, nR), 0, Math.PI * 2);
+          ctx.fillStyle = selectedShape === 0 ? 'rgba(52, 211, 153, 0.7)' : 'rgba(255, 255, 255, 0.5)';
           ctx.fill();
         }
       }
 
-      // 2. Crystalline Nerve Cluster
+      // 2. Crystalline Synaptic Nerve Cluster
       const c2 = canvas2Ref.current;
       if (c2) {
         const ctx = c2.getContext('2d');
@@ -77,12 +87,12 @@ export const InstinctTestScene: React.FC<InstinctTestSceneProps> = ({ seed, onCo
           const cx = c2.width / 2;
           const cy = c2.height / 2;
           const nodes = 7;
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-          ctx.lineWidth = 1.2;
+          ctx.strokeStyle = selectedShape === 1 ? 'rgba(52, 211, 153, 0.9)' : 'rgba(255, 255, 255, 0.5)';
+          ctx.lineWidth = selectedShape === 1 ? 2 : 1.2;
 
           for (let i = 0; i < nodes; i++) {
-            const angle = (i / nodes) * Math.PI * 2 + Math.sin(t * 0.8 + i) * 0.15;
-            const r = 40 + Math.sin(t * 2 + i * 2) * 12;
+            const angle = (i / nodes) * Math.PI * 2 + Math.sin(t * 0.9 + i) * 0.2;
+            const r = (selectedShape === 1 ? 48 : 40) + Math.sin(t * 2.5 + i * 2) * (selectedShape === 1 ? 16 : 12);
             const nx = cx + Math.cos(angle) * r;
             const ny = cy + Math.sin(angle) * r;
 
@@ -92,14 +102,14 @@ export const InstinctTestScene: React.FC<InstinctTestSceneProps> = ({ seed, onCo
             ctx.stroke();
 
             ctx.beginPath();
-            ctx.arc(nx, ny, 3, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.arc(nx, ny, selectedShape === 1 ? 4.5 : 3, 0, Math.PI * 2);
+            ctx.fillStyle = selectedShape === 1 ? 'rgba(52, 211, 153, 0.95)' : 'rgba(255, 255, 255, 0.8)';
             ctx.fill();
           }
         }
       }
 
-      // 3. Pulsing Biocellular Rings
+      // 3. Pulsing Biocellular Concentric Rings
       const c3 = canvas3Ref.current;
       if (c3) {
         const ctx = c3.getContext('2d');
@@ -110,11 +120,14 @@ export const InstinctTestScene: React.FC<InstinctTestSceneProps> = ({ seed, onCo
           const rings = 4;
           for (let i = 0; i < rings; i++) {
             const phaseShift = i * 0.8;
-            const r = 20 + i * 11 + Math.sin(t * 1.8 + phaseShift) * 6;
+            const r = 20 + i * 12 + Math.sin(t * 2.2 + phaseShift) * (selectedShape === 2 ? 10 : 6);
             ctx.beginPath();
             ctx.arc(cx, cy, Math.max(5, r), 0, Math.PI * 2);
-            ctx.strokeStyle = `rgba(255, 255, 255, ${0.2 + (i / rings) * 0.5})`;
-            ctx.lineWidth = 1.2;
+            ctx.strokeStyle =
+              selectedShape === 2
+                ? `rgba(52, 211, 153, ${0.4 + (i / rings) * 0.6})`
+                : `rgba(255, 255, 255, ${0.2 + (i / rings) * 0.5})`;
+            ctx.lineWidth = selectedShape === 2 ? 2 : 1.2;
             ctx.setLineDash([4, 4]);
             ctx.stroke();
             ctx.setLineDash([]);
@@ -130,24 +143,25 @@ export const InstinctTestScene: React.FC<InstinctTestSceneProps> = ({ seed, onCo
           ctx.clearRect(0, 0, c4.width, c4.height);
           const cy = c4.height / 2;
           ctx.beginPath();
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
-          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = selectedShape === 3 ? 'rgba(52, 211, 153, 0.95)' : 'rgba(255, 255, 255, 0.75)';
+          ctx.lineWidth = selectedShape === 3 ? 2.5 : 1.5;
           const w = c4.width;
+          const waveAmp = selectedShape === 3 ? 28 : 20;
           for (let x = 20; x < w - 20; x += 3) {
             const normX = (x - 20) / (w - 40);
-            const y = cy + Math.sin(normX * 8 + t * 2.5) * 22 * Math.sin(normX * Math.PI);
+            const y = cy + Math.sin(normX * 8 + t * 2.8) * waveAmp * Math.sin(normX * Math.PI);
             if (x === 20) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
           }
           ctx.stroke();
 
           // Particle tracking along wave
-          const headX = 20 + ((Math.sin(t * 1.5) + 1) / 2) * (w - 40);
+          const headX = 20 + ((Math.sin(t * 1.8) + 1) / 2) * (w - 40);
           const normHead = (headX - 20) / (w - 40);
-          const headY = cy + Math.sin(normHead * 8 + t * 2.5) * 22 * Math.sin(normHead * Math.PI);
+          const headY = cy + Math.sin(normHead * 8 + t * 2.8) * waveAmp * Math.sin(normHead * Math.PI);
           ctx.beginPath();
-          ctx.arc(headX, headY, 4, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.arc(headX, headY, selectedShape === 3 ? 5.5 : 4, 0, Math.PI * 2);
+          ctx.fillStyle = selectedShape === 3 ? 'rgba(52, 211, 153, 1)' : 'rgba(255, 255, 255, 0.9)';
           ctx.fill();
         }
       }
@@ -157,12 +171,13 @@ export const InstinctTestScene: React.FC<InstinctTestSceneProps> = ({ seed, onCo
 
     render();
     return () => cancelAnimationFrame(animId);
-  }, [seed]);
+  }, [seed, selectedShape]);
 
   const handleShapeHover = (index: number) => {
     if (selectedShape !== null) return;
     if (prevHoverRef.current !== null && prevHoverRef.current !== index) {
       switchesCountRef.current += 1;
+      sessionMemory.recordDecisionSwitch();
     }
     prevHoverRef.current = index;
     setHoveredShape(index);
@@ -174,24 +189,25 @@ export const InstinctTestScene: React.FC<InstinctTestSceneProps> = ({ seed, onCo
     const latency = Date.now() - startTimeRef.current;
     setSelectedShape(index);
     sound.playAcceptedTick();
+    sessionMemory.recordReactionTime(latency);
 
     // Narrative timing steps
     setFeedbackStage(1); // "Selection recorded."
-    setTimeout(() => {
+    setSceneTimeout(() => {
       setFeedbackStage(2); // "You recognized something."
       sound.playScanPulse();
     }, 1100);
 
-    setTimeout(() => {
-      setFeedbackStage(3); // "We don't know what."
+    setSceneTimeout(() => {
+      setFeedbackStage(3); // "...We don't know what."
     }, 2200);
 
-    setTimeout(() => {
+    setSceneTimeout(() => {
       setFeedbackStage(4); // "INSTINCT SAMPLE ACCEPTED"
       sound.playAcceptedTick();
     }, 3400);
 
-    setTimeout(() => {
+    setSceneTimeout(() => {
       onComplete(index, latency, switchesCountRef.current);
     }, 4500);
   };
@@ -208,33 +224,47 @@ export const InstinctTestScene: React.FC<InstinctTestSceneProps> = ({ seed, onCo
 
       {/* 4 Shapes Grid */}
       <div className="flex-1 flex flex-col items-center justify-center my-6">
-        {selectedShape === null ? (
-          <div className="grid grid-cols-2 gap-4 sm:gap-8 max-w-xl w-full">
-            {[canvas1Ref, canvas2Ref, canvas3Ref, canvas4Ref].map((ref, idx) => (
+        <div className="grid grid-cols-2 gap-4 sm:gap-8 max-w-xl w-full">
+          {[canvas1Ref, canvas2Ref, canvas3Ref, canvas4Ref].map((ref, idx) => {
+            const isSelected = selectedShape === idx;
+            const isOther = selectedShape !== null && !isSelected;
+
+            return (
               <button
                 key={idx}
                 id={`instinct-shape-${idx}`}
+                disabled={selectedShape !== null}
                 onPointerEnter={() => handleShapeHover(idx)}
                 onClick={() => handleSelect(idx)}
-                className={`relative group aspect-square flex flex-col items-center justify-center border transition-all duration-300 rounded p-4 bg-neutral-950/70 cursor-pointer ${
-                  hoveredShape === idx
+                className={`relative group aspect-square flex flex-col items-center justify-center border transition-all duration-500 rounded p-4 bg-neutral-950/70 cursor-pointer ${
+                  isSelected
+                    ? 'border-emerald-400 bg-emerald-950/20 shadow-[0_0_35px_rgba(52,211,153,0.3)] scale-105 z-10'
+                    : isOther
+                    ? 'opacity-20 border-neutral-900 scale-95 pointer-events-none'
+                    : hoveredShape === idx
                     ? 'border-white shadow-[0_0_20px_rgba(255,255,255,0.1)] scale-102'
                     : 'border-neutral-800 hover:border-neutral-600'
                 }`}
               >
-                <div className="absolute top-2 left-2 text-[10px] text-neutral-600 font-mono tracking-widest">
-                  PATTERN 0{idx + 1}
+                <div
+                  className={`absolute top-2 left-2 text-[10px] font-mono tracking-widest ${
+                    isSelected ? 'text-emerald-400 font-bold' : 'text-neutral-600'
+                  }`}
+                >
+                  {isSelected ? 'STIMULUS REACTING' : `PATTERN 0${idx + 1}`}
                 </div>
                 <canvas ref={ref} width={180} height={180} className="w-full h-full max-w-[150px] max-h-[150px]" />
                 <div className="absolute bottom-2 right-2 text-[9px] text-neutral-600 uppercase tracking-widest group-hover:text-neutral-300 transition-colors">
-                  [SELECT]
+                  {isSelected ? '[EXCITED]' : '[SELECT]'}
                 </div>
               </button>
-            ))}
-          </div>
-        ) : (
-          /* Narrative progression after choice */
-          <div className="text-center space-y-4 max-w-md w-full animate-fadeIn">
+            );
+          })}
+        </div>
+
+        {/* Narrative progression after choice */}
+        {selectedShape !== null && (
+          <div className="mt-8 text-center space-y-3 max-w-md w-full animate-fadeIn">
             {feedbackStage >= 1 && (
               <div className="text-sm text-neutral-400 font-mono tracking-wider">
                 Selection recorded. Pattern 0{selectedShape + 1} logged.
@@ -254,7 +284,7 @@ export const InstinctTestScene: React.FC<InstinctTestSceneProps> = ({ seed, onCo
             )}
 
             {feedbackStage >= 4 && (
-              <div className="text-emerald-400 font-mono text-sm tracking-widest font-bold pt-4 animate-fadeIn flex items-center justify-center gap-2">
+              <div className="text-emerald-400 font-mono text-sm tracking-widest font-bold pt-2 animate-fadeIn flex items-center justify-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                 INSTINCT SAMPLE ACCEPTED
               </div>

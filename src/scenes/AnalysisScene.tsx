@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useSceneTimers } from '../utils/useSceneTimers';
 import { sound } from '../audio/AudioEngine';
 
 interface AnalysisSceneProps {
@@ -10,6 +11,7 @@ export const AnalysisScene: React.FC<AnalysisSceneProps> = ({
   humanityScore,
   onGlitchTriggered,
 }) => {
+  const { setSceneTimeout } = useSceneTimers();
   const [progress, setProgress] = useState<number>(0);
   const [isVerified, setIsVerified] = useState<boolean>(false);
   const [isInterrupted, setIsInterrupted] = useState<boolean>(false);
@@ -27,10 +29,10 @@ export const AnalysisScene: React.FC<AnalysisSceneProps> = ({
       { p: displayScore, delay: 3400 },
     ];
 
-    const timeouts: NodeJS.Timeout[] = [];
+    const timeouts: number[] = [];
 
     steps.forEach((step, idx) => {
-      const t = setTimeout(() => {
+      const t = setSceneTimeout(() => {
         setProgress(step.p);
         if (idx === steps.length - 1) {
           setIsVerified(true);
@@ -52,26 +54,26 @@ export const AnalysisScene: React.FC<AnalysisSceneProps> = ({
     sound.setAmbienceTension(0.58);
 
     // Dramatic brief pause: do nothing for a moment
-    setTimeout(() => {
+    setSceneTimeout(() => {
       setInterruptionStage(1); // "..."
     }, 1200);
 
-    setTimeout(() => {
+    setSceneTimeout(() => {
       setInterruptionStage(2); // Minor glitch
       sound.playGlitch(0.25);
       sound.playWarningPulse();
     }, 2400);
 
-    setTimeout(() => {
+    setSceneTimeout(() => {
       setInterruptionStage(3); // "ADDITIONAL SAMPLE REQUIRED"
       sound.playWarningPulse();
     }, 3600);
 
-    setTimeout(() => {
+    setSceneTimeout(() => {
       setInterruptionStage(4); // "VISUAL TRAINING REQUIRED"
     }, 4600);
 
-    setTimeout(() => {
+    setSceneTimeout(() => {
       onGlitchTriggered();
     }, 6200);
   };
@@ -81,7 +83,7 @@ export const AnalysisScene: React.FC<AnalysisSceneProps> = ({
       {/* Top Header */}
       <div className="border-b border-neutral-800/80 pb-4">
         <div className="text-xs text-neutral-500 tracking-widest uppercase">EVALUATION SUMMARY // CORE ANALYSIS</div>
-        <div className="text-xs text-neutral-600 mt-0.5">BAYESIAN PROBABILITY MATRIX</div>
+        <div className="text-xs text-neutral-600 mt-0.5">BEHAVIORAL PROBABILITY MATRIX</div>
       </div>
 
       {/* Main Analysis Display */}
@@ -120,7 +122,7 @@ export const AnalysisScene: React.FC<AnalysisSceneProps> = ({
                     {humanityScore}% HUMAN
                   </h1>
                   <p className="text-neutral-400 font-mono text-sm tracking-widest uppercase">
-                    BIOLOGICAL HUMAN CONFIDENCE
+                    SESSION HUMANITY CONFIDENCE
                   </p>
                 </div>
 
@@ -169,7 +171,7 @@ export const AnalysisScene: React.FC<AnalysisSceneProps> = ({
       <div className="border-t border-neutral-800/80 pt-3 text-center text-xs text-neutral-600">
         {isInterrupted
           ? 'System exception logged. Disengaging verification protocol.'
-          : 'Confidence score calibrated against global baseline H-norms.'}
+          : "Confidence score synthesized from this session's fictional H-model baseline."}
       </div>
     </div>
   );

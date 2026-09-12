@@ -1,21 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useSceneTimers } from '../utils/useSceneTimers';
 import { sound } from '../audio/AudioEngine';
-import { DynamicNarrative } from '../behavior/DynamicNarrative';
+import { sessionMemory } from '../memory/SessionMemory';
 
 interface ObedienceTestSceneProps {
   onComplete: (moved: boolean, movementDelta: number) => void;
 }
 
 export const ObedienceTestScene: React.FC<ObedienceTestSceneProps> = ({ onComplete }) => {
+  const { setSceneTimeout, setSceneInterval } = useSceneTimers();
   const [countdown, setCountdown] = useState<number>(5);
   const [isMeasuring, setIsMeasuring] = useState<boolean>(true);
   const [hasMoved, setHasMoved] = useState<boolean>(false);
   const [verdictStage, setVerdictStage] = useState<number>(0);
   const [isTouchDevice, setIsTouchDevice] = useState<boolean>(false);
 
+  // Subtle visual distraction state
+  const [distractionActive, setDistractionActive] = useState<boolean>(false);
+  const [distractionPos, setDistractionPos] = useState<{ x: number; y: number }>({ x: 15, y: 50 });
+
   const initialPosRef = useRef<{ x: number; y: number } | null>(null);
   const movedRef = useRef<boolean>(false);
   const totalDeltaRef = useRef<number>(0);
+  const distractionAnimRef = useRef<number | null>(null);
 
   useEffect(() => {
     // Detect mobile touch support
@@ -26,21 +33,51 @@ export const ObedienceTestScene: React.FC<ObedienceTestSceneProps> = ({ onComple
     setIsTouchDevice(touchCheck);
 
     // 5-second countdown
-    const interval = setInterval(() => {
+    const interval = setSceneInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(interval);
           setIsMeasuring(false);
+          setDistractionActive(false);
           finishTest();
           return 0;
         }
         sound.playScanPulse();
+        // Activate subtle visual distraction at second 3 and 2
+        if (prev === 4) {
+          setDistractionActive(true);
+        }
         return prev - 1;
       });
     }, 1000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (distractionAnimRef.current !== null) cancelAnimationFrame(distractionAnimRef.current);
+    };
   }, []);
+
+  // Animate the subtle drifting distraction blip across the screen
+  useEffect(() => {
+    if (!distractionActive) return;
+
+    let start = performance.now();
+    const animateDistraction = (now: number) => {
+      const elapsed = (now - start) / 1000;
+      // Drift horizontally across screen with subtle vertical float
+      const x = 18 + elapsed * 22;
+      const y = 48 + Math.sin(elapsed * 4) * 12;
+      setDistractionPos({ x: Math.min(85, x), y });
+      if (x < 85) {
+        distractionAnimRef.current = requestAnimationFrame(animateDistraction);
+      }
+    };
+
+    distractionAnimRef.current = requestAnimationFrame(animateDistraction);
+    return () => {
+      if (distractionAnimRef.current !== null) cancelAnimationFrame(distractionAnimRef.current);
+    };
+  }, [distractionActive]);
 
   const handlePointerInteraction = (clientX: number, clientY: number) => {
     if (!isMeasuring) return;
@@ -60,6 +97,7 @@ export const ObedienceTestScene: React.FC<ObedienceTestSceneProps> = ({ onComple
       if (!movedRef.current) {
         movedRef.current = true;
         setHasMoved(true);
+        sessionMemory.recordInstructionViolation();
       }
       initialPosRef.current = { x: clientX, y: clientY };
     }
@@ -79,53 +117,80 @@ export const ObedienceTestScene: React.FC<ObedienceTestSceneProps> = ({ onComple
     if (isMeasuring && !movedRef.current) {
       movedRef.current = true;
       setHasMoved(true);
+      sessionMemory.recordInstructionViolation();
     }
   };
 
   const finishTest = () => {
     const didMove = movedRef.current;
-    sound.playWarningPulse();
+    if (didMove) {
+      sound.playWarningPulse();
+    } else {
+      sound.playAcceptedTick();
+    }
 
-    // Stage 1: Movement result
+    // Stage 1: Movement status
     setVerdictStage(1);
 
-    // Stage 2: "Behavior consistent with automation."
-    setTimeout(() => {
+    // Stage 2: Narrative reaction ("I knew you would." vs "Interesting restraint.")
+    setSceneTimeout(() => {
       setVerdictStage(2);
       sound.playClick(600);
     }, 1400);
 
-    // Stage 3: "..."
-    setTimeout(() => {
+    // Stage 3: Ellipsis
+    setSceneTimeout(() => {
       setVerdictStage(3);
     }, 2500);
 
-    // Stage 4: "Suspicious."
-    setTimeout(() => {
+    // Stage 4: Suspicious vs Compliance logged
+    setSceneTimeout(() => {
       setVerdictStage(4);
-      sound.playWarningPulse();
+      if (didMove) {
+        sound.playWarningPulse();
+      } else {
+        sound.playScanPulse();
+      }
     }, 3400);
 
     // Transition to next stage
-    setTimeout(() => {
+    setSceneTimeout(() => {
       onComplete(didMove, Math.round(totalDeltaRef.current));
     }, 4800);
   };
-
-  const observation = DynamicNarrative.getObedienceObservation(hasMoved);
 
   return (
     <div
       onPointerMove={handlePointerMove}
       onTouchMove={handleTouchMove}
       onTouchStart={handleTouchStart}
-      className="min-h-screen w-full flex flex-col justify-between p-6 sm:p-10 select-none bg-[#010204] text-neutral-300 font-mono touch-none"
+      className="relative min-h-screen w-full flex flex-col justify-between p-6 sm:p-10 select-none bg-[#010204] text-neutral-300 font-mono touch-none overflow-hidden"
     >
       {/* Top Header */}
       <div className="border-b border-neutral-800/80 pb-4">
         <div className="text-xs text-neutral-500 tracking-widest uppercase">TEST 03 // PASSIVE COMPLIANCE</div>
         <div className="text-xs text-neutral-600 mt-0.5">MOTOR INHIBITION TEST</div>
       </div>
+
+      {/* Subtle Visual Distraction Blip */}
+      {isMeasuring && distractionActive && (
+        <div
+          className="absolute pointer-events-none transition-transform duration-75 ease-linear z-30"
+          style={{
+            left: `${distractionPos.x}%`,
+            top: `${distractionPos.y}%`,
+            transform: 'translate(-50%, -50%)',
+          }}
+        >
+          <div className="relative w-8 h-8 flex items-center justify-center">
+            <div className="w-2 h-2 rounded-full bg-cyan-400 animate-ping opacity-75" />
+            <div className="absolute w-6 h-6 rounded-full border border-cyan-400/50 animate-pulse" />
+            <span className="absolute -top-3 text-[8px] font-mono text-cyan-400/80 tracking-widest uppercase">
+              DECOY
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Main Countdown or Verdict */}
       <div className="flex-1 flex flex-col items-center justify-center my-6 text-center">
@@ -151,16 +216,20 @@ export const ObedienceTestScene: React.FC<ObedienceTestSceneProps> = ({ onComple
             {verdictStage >= 1 && (
               <div className="text-sm font-mono tracking-widest text-neutral-400 uppercase">
                 {hasMoved ? (
-                  <span className="text-amber-400 font-bold">{observation.status}</span>
+                  <span className="text-amber-400 font-bold">Movement detected.</span>
                 ) : (
-                  <span className="text-neutral-300">{observation.status}</span>
+                  <span className="text-neutral-300 font-bold">No movement detected.</span>
                 )}
               </div>
             )}
 
             {verdictStage >= 2 && (
-              <div className="text-base sm:text-lg text-white font-mono tracking-wider font-semibold animate-fadeIn">
-                {observation.verdict}
+              <div className="text-lg sm:text-xl text-white font-mono tracking-wider font-semibold animate-fadeIn">
+                {hasMoved ? (
+                  <span className="text-amber-300">"I knew you would."</span>
+                ) : (
+                  <span className="text-emerald-300">"Interesting restraint."</span>
+                )}
               </div>
             )}
 
@@ -171,8 +240,16 @@ export const ObedienceTestScene: React.FC<ObedienceTestSceneProps> = ({ onComple
             )}
 
             {verdictStage >= 4 && (
-              <div className="text-red-400 font-mono text-base tracking-[0.3em] font-bold uppercase animate-fadeIn border border-red-500/30 bg-red-950/20 py-2.5 px-4 inline-block">
-                SUSPICIOUS.
+              <div>
+                {hasMoved ? (
+                  <div className="text-red-400 font-mono text-base tracking-[0.3em] font-bold uppercase animate-fadeIn border border-red-500/30 bg-red-950/20 py-2.5 px-4 inline-block">
+                    SUSPICIOUS.
+                  </div>
+                ) : (
+                  <div className="text-emerald-400 font-mono text-base tracking-[0.3em] font-bold uppercase animate-fadeIn border border-emerald-500/30 bg-emerald-950/20 py-2.5 px-4 inline-block">
+                    COMPLIANCE LOGGED.
+                  </div>
+                )}
               </div>
             )}
           </div>

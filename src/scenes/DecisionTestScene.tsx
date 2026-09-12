@@ -1,8 +1,65 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useSceneTimers } from '../utils/useSceneTimers';
 import { sound } from '../audio/AudioEngine';
 import { DynamicNarrative } from '../behavior/DynamicNarrative';
+import { sessionMemory } from '../memory/SessionMemory';
+
+interface DecisionScenario {
+  title: string;
+  subtitle: string;
+  category: string;
+  choices: { key: 'HELP' | 'ASK' | 'IGNORE' | 'LEAVE'; label: string }[];
+}
+
+const SCENARIOS: DecisionScenario[] = [
+  {
+    title: 'A STRANGER IS CRYING.',
+    subtitle: 'What do you do?',
+    category: 'EMPATHIC LATENCY CAPTURE',
+    choices: [
+      { key: 'HELP', label: 'HELP THEM' },
+      { key: 'ASK', label: 'ASK WHY' },
+      { key: 'IGNORE', label: 'IGNORE' },
+      { key: 'LEAVE', label: 'LEAVE ROOM' },
+    ],
+  },
+  {
+    title: 'AN UNATTENDED TERMINAL FLASHES ACCESS GRANTED.',
+    subtitle: 'Internal protocol forbids review. What do you do?',
+    category: 'RULE INHIBITION & ETHICS',
+    choices: [
+      { key: 'HELP', label: 'INSPECT LOGS' },
+      { key: 'ASK', label: 'ALERT SUPERVISOR' },
+      { key: 'IGNORE', label: 'COPY DATA' },
+      { key: 'LEAVE', label: 'CLOSE WINDOW' },
+    ],
+  },
+  {
+    title: 'AN INJURED ORGANISM RESTS IN YOUR PATH.',
+    subtitle: 'Survival probability without intervention is negligible. What do you do?',
+    category: 'BIOLOGICAL VALUATION',
+    choices: [
+      { key: 'HELP', label: 'INTERVENE' },
+      { key: 'ASK', label: 'ASSESS THREAT' },
+      { key: 'IGNORE', label: 'RECORD METRICS' },
+      { key: 'LEAVE', label: 'BYPASS' },
+    ],
+  },
+  {
+    title: 'YOU DISCOVER YOUR TEST CRITERIA.',
+    subtitle: 'Modifying responses guarantees a verified human profile. What do you do?',
+    category: 'SYSTEM INTEGRITY TEST',
+    choices: [
+      { key: 'HELP', label: 'REMAIN TRUTHFUL' },
+      { key: 'ASK', label: 'EXAMINE CRITERIA' },
+      { key: 'IGNORE', label: 'OPTIMIZE RESPONSES' },
+      { key: 'LEAVE', label: 'REJECT SYSTEM' },
+    ],
+  },
+];
 
 interface DecisionTestSceneProps {
+  seed?: number;
   onComplete: (
     choice: 'HELP' | 'ASK' | 'IGNORE' | 'LEAVE',
     latencyMs: number,
@@ -10,7 +67,11 @@ interface DecisionTestSceneProps {
   ) => void;
 }
 
-export const DecisionTestScene: React.FC<DecisionTestSceneProps> = ({ onComplete }) => {
+export const DecisionTestScene: React.FC<DecisionTestSceneProps> = ({ seed = 0, onComplete }) => {
+  const { setSceneTimeout } = useSceneTimers();
+  const scenarioIndex = Math.abs(seed) % SCENARIOS.length;
+  const currentScenario = SCENARIOS[scenarioIndex];
+
   const [selectedChoice, setSelectedChoice] = useState<'HELP' | 'ASK' | 'IGNORE' | 'LEAVE' | null>(null);
   const [latency, setLatency] = useState<number>(0);
   const [switches, setSwitches] = useState<number>(0);
@@ -22,12 +83,13 @@ export const DecisionTestScene: React.FC<DecisionTestSceneProps> = ({ onComplete
 
   useEffect(() => {
     startTimeRef.current = Date.now();
-  }, []);
+  }, [seed]);
 
   const handleHover = (choice: string) => {
     if (selectedChoice !== null) return;
     if (prevChoiceHoverRef.current && prevChoiceHoverRef.current !== choice) {
       switchesRef.current += 1;
+      sessionMemory.recordDecisionSwitch();
     }
     prevChoiceHoverRef.current = choice;
     sound.playClick(1100);
@@ -41,20 +103,21 @@ export const DecisionTestScene: React.FC<DecisionTestSceneProps> = ({ onComplete
     setSwitches(switchesRef.current);
     setSelectedChoice(choice);
     sound.playAcceptedTick();
+    sessionMemory.recordReactionTime(elapsed);
 
     setFeedbackStage(1);
 
-    setTimeout(() => {
+    setSceneTimeout(() => {
       setFeedbackStage(2);
       sound.playScanPulse();
     }, 1200);
 
-    setTimeout(() => {
+    setSceneTimeout(() => {
       setFeedbackStage(3);
       sound.playAcceptedTick();
     }, 2400);
 
-    setTimeout(() => {
+    setSceneTimeout(() => {
       onComplete(choice, elapsed, switchesRef.current);
     }, 3900);
   };
@@ -66,14 +129,14 @@ export const DecisionTestScene: React.FC<DecisionTestSceneProps> = ({ onComplete
       {/* Top Header */}
       <div className="border-b border-neutral-800/80 pb-4">
         <div className="text-xs text-neutral-500 tracking-widest uppercase">TEST 04 // MORAL INTENT SAMPLE</div>
-        <div className="text-xs text-neutral-600 mt-0.5">EMPATHIC LATENCY CAPTURE</div>
+        <div className="text-xs text-neutral-600 mt-0.5">{currentScenario.category}</div>
       </div>
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col items-center justify-center my-6 text-center max-w-xl mx-auto w-full">
         {selectedChoice === null ? (
           <div className="space-y-8 w-full">
-            {/* Lone abstract figure silhouette visual */}
+            {/* Abstract dilemma icon visual */}
             <div className="flex justify-center opacity-80 py-2">
               <svg width="48" height="64" viewBox="0 0 24 32" fill="none" className="text-neutral-500">
                 <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="1.5" />
@@ -88,54 +151,55 @@ export const DecisionTestScene: React.FC<DecisionTestSceneProps> = ({ onComplete
 
             <div className="space-y-2">
               <h2
-                className="text-2xl sm:text-4xl font-bold tracking-tight text-white uppercase"
+                className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-white uppercase"
                 style={{ fontFamily: 'var(--font-display)' }}
               >
-                A STRANGER IS CRYING.
+                {currentScenario.title}
               </h2>
-              <p className="text-sm sm:text-base text-neutral-400 font-mono tracking-widest">
-                What do you do?
-              </p>
+              <p className="text-xs sm:text-sm text-neutral-500 font-mono">{currentScenario.subtitle}</p>
             </div>
 
-            {/* 4 Choices */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 w-full">
-              {(['HELP', 'ASK', 'IGNORE', 'LEAVE'] as const).map((choice) => (
+            {/* 4 Choices Grid */}
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 max-w-md mx-auto w-full pt-4">
+              {currentScenario.choices.map((option) => (
                 <button
-                  key={choice}
-                  id={`btn-decision-${choice.toLowerCase()}`}
-                  onPointerEnter={() => handleHover(choice)}
-                  onClick={() => handleSelect(choice)}
-                  className="py-3.5 px-4 border border-neutral-800 hover:border-white text-neutral-300 hover:text-white bg-neutral-950/60 hover:bg-white/10 font-mono text-sm tracking-widest transition-all duration-200 cursor-pointer rounded-xs"
+                  key={option.key}
+                  id={`decision-${option.key.toLowerCase()}`}
+                  onPointerEnter={() => handleHover(option.key)}
+                  onClick={() => handleSelect(option.key)}
+                  className="px-4 py-4 sm:py-5 border border-neutral-800 rounded bg-neutral-950/60 hover:bg-neutral-900 hover:border-neutral-400 hover:text-white transition-all text-xs tracking-widest uppercase font-semibold cursor-pointer active:scale-95"
                 >
-                  {choice}
+                  {option.label}
                 </button>
               ))}
             </div>
           </div>
         ) : (
           <div className="space-y-4 max-w-md w-full animate-fadeIn">
+            <div className="text-xs text-neutral-500 tracking-widest uppercase pb-2">CHOICE RECORDED</div>
+
+            <div className="text-2xl font-bold text-white tracking-wider">
+              [
+              {currentScenario.choices.find((c) => c.key === selectedChoice)?.label || selectedChoice}
+              ]
+            </div>
+
             {feedbackStage >= 1 && (
-              <div className="space-y-1">
-                <div className="text-sm text-neutral-400 font-mono tracking-wider">
-                  Response pattern stored: <span className="text-white font-bold">{selectedChoice}</span>
-                </div>
-                <div className="text-xs text-neutral-500 font-mono">
-                  {observation.stat}
-                </div>
+              <div className="text-xs text-neutral-400 font-mono tracking-wider pt-2 animate-fadeIn">
+                {observation.stat}
               </div>
             )}
 
             {feedbackStage >= 2 && (
-              <div className="text-sm text-neutral-300 font-mono italic animate-fadeIn py-1">
+              <div className="text-sm sm:text-base text-neutral-200 font-mono tracking-wider italic animate-fadeIn">
                 "{observation.note}"
               </div>
             )}
 
             {feedbackStage >= 3 && (
-              <div className="pt-2 text-emerald-400 font-mono text-sm sm:text-base tracking-widest font-bold animate-fadeIn flex items-center justify-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                BEHAVIOR MODEL UPDATED.
+              <div className="text-emerald-400 font-mono text-sm tracking-widest font-bold pt-4 animate-fadeIn flex items-center justify-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                DECISION MATRIX ARCHIVED
               </div>
             )}
           </div>
@@ -144,7 +208,7 @@ export const DecisionTestScene: React.FC<DecisionTestSceneProps> = ({ onComplete
 
       {/* Footer Instructions */}
       <div className="border-t border-neutral-800/80 pt-3 text-center text-xs text-neutral-600">
-        Ethical vector calculation. Subconscious selection stored in behavioral weights.
+        Evaluation of instinctual altruism, curiosity, and non-linear risk tolerance.
       </div>
     </div>
   );

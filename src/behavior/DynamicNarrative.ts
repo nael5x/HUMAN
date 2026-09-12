@@ -1,6 +1,12 @@
 import { ClassificationType, SessionData } from '../types';
+import { SessionBehaviorSummary } from '../memory/SessionMemory';
 
 export class DynamicNarrative {
+  private static shownObservations: Set<string> = new Set();
+
+  public static resetHistory(): void {
+    DynamicNarrative.shownObservations.clear();
+  }
   /**
    * Generates dynamic clinical system observations during behavioral tests
    */
@@ -116,4 +122,86 @@ export class DynamicNarrative {
     };
   }
 
+  /**
+   * Deterministic rule-based observations generated strictly from recorded behavioral telemetry.
+   * Directly addresses:
+   * - "You rarely hesitate." (fast decisive user)
+   * - "You reconsider often." (frequent decision changes)
+   * - "Instructions appear optional to you." (instruction violations)
+   * - "You are unusually controlled." (very controlled, smooth behavior)
+   * - "You moved before I finished." (early movement)
+   */
+  public static getBehavioralObservations(summary: SessionBehaviorSummary, count: number = 2): string[] {
+    const candidates: string[] = [];
+
+    // Early movement before instruction finished
+    if (summary.prematureMovements > 0) {
+      candidates.push('You moved before I finished.');
+    }
+
+    // Instruction violations (e.g. moved during obedience test)
+    if (summary.instructionViolations > 0) {
+      candidates.push('Instructions appear optional to you.');
+    }
+
+    // Fast decisive user
+    if (summary.averageReactionMs > 0 && summary.averageReactionMs < 950 && summary.decisionSwitches <= 1) {
+      candidates.push('You rarely hesitate.');
+    }
+
+    // Frequent decision changes
+    if (summary.decisionSwitches >= 3) {
+      candidates.push('You reconsider often.');
+    }
+
+    // Very controlled behavior: minimal corrections, low idle, zero unnecessary clicks
+    if (
+      summary.unnecessaryClicks === 0 &&
+      summary.instructionViolations === 0 &&
+      summary.maxSpeed > 0 &&
+      summary.maxSpeed < 2.5
+    ) {
+      candidates.push('You are unusually controlled.');
+    }
+
+    // High curiosity or exploratory behavior
+    if (summary.totalDistance > 3500 || summary.directionChanges > 25) {
+      candidates.push('You test boundaries before committing.');
+    }
+
+    // Extended deliberation / hesitation
+    if (summary.hoverHesitations >= 2 || summary.longestIdleMs > 4000) {
+      candidates.push('You weigh consequences carefully.');
+    }
+
+    // Non-interactive clicks
+    if (summary.systemTextClicks >= 2) {
+      candidates.push('You question the interface structure.');
+    }
+
+    // Fallbacks that are still true
+    if (summary.firstMoveLatencyMs > 0 && summary.firstMoveLatencyMs < 400) {
+      candidates.push('Immediate kinetic readiness recorded.');
+    }
+    candidates.push('Movement trajectory matches expected session variance.');
+    candidates.push('Decision latency falls within the current session baseline.');
+
+    // Select candidates not recently shown
+    const selected: string[] = [];
+    for (const phrase of candidates) {
+      if (!DynamicNarrative.shownObservations.has(phrase)) {
+        selected.push(phrase);
+        DynamicNarrative.shownObservations.add(phrase);
+        if (selected.length >= count) break;
+      }
+    }
+
+    // If all were shown, use the top ones
+    if (selected.length === 0) {
+      selected.push(candidates[0] || 'Movement trajectory matches expected session variance.');
+    }
+
+    return selected;
+  }
 }
+
