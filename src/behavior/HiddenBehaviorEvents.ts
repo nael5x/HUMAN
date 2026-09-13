@@ -107,6 +107,38 @@ class HiddenBehaviorManager {
     }
   }
 
+  public triggerPredictionMatch(exact: boolean): void {
+    if (exact && this.canTrigger('pred_exact', 20000)) {
+      this.emitWhisper('Every choice was anticipated.', 'neutral', 2800);
+    } else if (!exact && this.canTrigger('pred_near', 20000)) {
+      this.emitWhisper('Deliberation noted.', 'curious', 2800);
+    }
+  }
+
+  public triggerPredictionDivergence(): void {
+    if (this.canTrigger('pred_divergence', 20000)) {
+      this.emitWhisper('Anomalous divergence recorded.', 'warning', 2800);
+    }
+  }
+
+  public triggerMirrorProlongedStillness(): void {
+    if (this.canTrigger('mirror_stillness', 25000)) {
+      this.emitWhisper("Don't look away.", 'curious', 3000);
+    }
+  }
+
+  public triggerMirrorRapidMotion(): void {
+    if (this.canTrigger('mirror_rapid', 20000)) {
+      this.emitWhisper('Desynchronization spike.', 'warning', 2600);
+    }
+  }
+
+  public triggerMirrorDesync(): void {
+    if (this.canTrigger('mirror_desync', 25000)) {
+      this.emitWhisper('Which one moved first?', 'warning', 3200);
+    }
+  }
+
   public triggerReturningWhisper(): void {
     if (this.canTrigger('returning_subject', 60000)) {
       SecretResolver.recordDiscovery('RETURNING_SUBJECT');

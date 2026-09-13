@@ -1,0 +1,15 @@
+HUMAN? V2.2 Integrity Fix — PATCH ONLY
+
+This archive contains ONLY the files changed by the integrity correction.
+
+Apply:
+1. Copy all files/folders from this archive into your existing HUMAN project root.
+2. Choose Replace/Overwrite when Windows asks.
+3. Delete bun.lock from the project root if it exists.
+4. Do NOT delete .git, node_modules, package-lock.json, or any other project files.
+5. Then run:
+   npm run typecheck
+   npm run test
+   npm run build
+
+Expected test count after applying this patch: 52 tests across 7 test files.

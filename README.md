@@ -48,6 +48,8 @@ Included unit and integration test coverage:
 - **`src/__tests__/ChallengeProtocol.test.ts`**: Round-trip encode/decode parity, input sanitization, whitelist ending fallback, and injection rejection.
 - **`src/__tests__/UserMemory.test.ts`**: Storage key schema migration (`human_user_memory` to `human_user_memory_v2`), strict session visit count deduplication against React re-renders, and corruption recovery.
 - **`src/__tests__/FullSessionFlow.test.ts`**: End-to-end simulated playthrough from initial boot through every test stage to machine reconstruction and challenge card generation.
+- **`src/__tests__/PredictionEngine.test.ts`**: Deterministic sealed commitments, single-commit immutability, pre-seal selection gating, outcome classification, and evidence integrity.
+- **`src/__tests__/MirrorReactiveEngine.test.ts`**: Motion-state classification, bounded reactive metrics, active-time pause semantics, genuine-vs-synthetic telemetry isolation, and MachineDNA provenance checks.
 
 ## Continuous Integration (CI)
 
@@ -56,6 +58,12 @@ A GitHub Actions workflow is provided in `.github/workflows/ci.yml` that automat
 2. Strict TypeScript typechecking (`npm run typecheck`)
 3. Unit and integration test suite (`npm run test`)
 4. Production bundle compilation (`npm run build`)
+
+## V2.2 behavior intelligence
+
+The Prediction trial uses a deterministic **sealed commitment** flow. A short pre-commitment observation window runs first, then the model enters a visible `MODEL LOCKED` state and only then enables the final LEFT/RIGHT selection. Pointer movement after sealing cannot mutate the committed prediction. The displayed commitment ID is a deterministic local identifier derived from the sealed prediction payload; it is not presented as cryptographic proof.
+
+The Mirror is a **time-bounded, behavior-reactive desynchronization system**. Its cinematic phases still guarantee a reliable narrative completion, while measured FaceTracker motion can alter delay, freeze, drift, and replay behavior. The active scene clock pauses while the document is hidden so tab switching cannot skip escalation phases. Synthetic fallback motion is used only to keep the visual sequence alive; it is never stored as observed user telemetry and cannot influence MachineDNA.
 
 ## Camera and face tracking
 
@@ -75,7 +83,7 @@ MediaPipe WASM/model assets are currently loaded from pinned public URLs. The ac
 
 ## Mirror effect
 
-The mirror keeps a rolling in-memory frame buffer. It gradually displays older frames to create latency, then replays a short earlier motion slice to produce the final desynchronization illusion. The buffer is discarded when the scene ends.
+The mirror keeps a rolling in-memory frame buffer and combines a deterministic cinematic timeline with local motion-reactive delay, freeze, drift, and replay. When real FaceTracker samples are available, measured motion can contribute bounded mirror telemetry. If camera tracking is unavailable or simulated, a synthetic visual signal preserves the scene without being recorded as user behavior. Hidden-tab time is excluded from Mirror progression, and the in-memory frame buffer is discarded when the scene ends.
 
 ## Main source layout
 
@@ -97,8 +105,12 @@ src/
     EndingResolver.ts        # 4 deterministic endings (VERIFIED, ANOMALY, MACHINE, REPLACED)
     MachineDNA.ts            # Normalized behavioral chromosome & SeededRandom
   memory/
-    SessionMemory.ts         # In-memory runtime telemetry capture
+    SessionMemory.ts         # In-memory runtime telemetry capture with source-guarded mirror metrics
     UserMemory.ts            # Safe client-only persistence for returning users
+  prediction/
+    PredictionEngine.ts      # Deterministic sealed commitment engine and selection gate
+  mirror/
+    MirrorReactiveEngine.ts  # Motion-energy controller and active-time clock
   scenes/
     LandingScene.tsx         # Entry gate with challenge detection & returning whisper
     BootScene.tsx            # Terminal calibration sequence
@@ -107,12 +119,12 @@ src/
     ObedienceTestScene.tsx   # Micromovement restraint trial
     DecisionTestScene.tsx    # Seeded ethical dilemma trial
     MemoryTestScene.tsx      # Glyphic recall confidence trial
-    PredictionScene.tsx      # Anticipation engine trial with breaker secret
+    PredictionScene.tsx      # Visible pre-choice sealed prediction trial with breaker secret
     BehaviorRevealScene.tsx  # Telemetry synthesis breakdown
     AnalysisScene.tsx        # Fake verification & glitch pivot
     CameraPermissionScene.tsx# On-device visual sensor opt-in
     FaceTrainingScene.tsx    # Real local MediaPipe cranial training sequence
-    MirrorScene.tsx          # Memory-buffered desync & identity transfer
+    MirrorScene.tsx          # Time-bounded reactive desync with synthetic telemetry isolation
     TwistScene.tsx           # Narrative blackout & plot revelation
     MachineReconstructionScene.tsx # Stepped procedural organism assembly
     ResultScene.tsx          # Dossier, procedural twin, challenge comparison, dual card export
@@ -131,4 +143,4 @@ src/
 
 ## Current development status
 
-Milestones 1, 2, 3, and 4 are completely implemented and verified. The application operates entirely client-side with zero external data transmission, delivering a complete cinematic and viral narrative experience.
+Milestones 1, 2, 3, and 4 plus the V2.2 behavior-intelligence pass are implemented. The application remains client-side, with camera inference and behavioral state kept local to the browser session.

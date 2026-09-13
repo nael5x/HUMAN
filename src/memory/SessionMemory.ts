@@ -24,6 +24,18 @@ export interface PredictionMetrics {
   directionSwitches: number;
 }
 
+
+export type MirrorTelemetrySource = 'FACE_TRACKER' | 'SYNTHETIC';
+
+export interface MirrorReactionTelemetry {
+  maxMotionEnergy: number;
+  stillDurationMs: number;
+  rapidSpikes: number;
+  desyncIntensity: number;
+  sampleCount: number;
+  source: 'FACE_TRACKER';
+}
+
 export interface SessionBehaviorSummary {
   firstMoveLatencyMs: number;
   totalDistance: number;
@@ -48,6 +60,12 @@ export interface SessionBehaviorSummary {
   trainingCompletion: boolean;
   mirrorStillnessDetected: boolean;
   mirrorSequenceCompleted: boolean;
+  mirrorReactionTelemetry?: MirrorReactionTelemetry | null;
+
+  // Milestone 2.2 Intelligence Telemetry
+  predictionExactMatches: number;
+  predictionNearMatches: number;
+  predictionFailures: number;
 
   // Milestone 3 Final Session Outputs
   machineId?: string;
@@ -100,6 +118,12 @@ class SessionMemoryService {
   private trainingCompletion: boolean = false;
   private mirrorStillnessDetected: boolean = false;
   private mirrorSequenceCompleted: boolean = false;
+  private mirrorReactionTelemetry: MirrorReactionTelemetry | null = null;
+
+  // Milestone 2.2 Intelligence Telemetry
+  private predictionExactMatches: number = 0;
+  private predictionNearMatches: number = 0;
+  private predictionFailures: number = 0;
 
   // Milestone 3 Final Session Outputs
   private machineId?: string;
@@ -137,6 +161,11 @@ class SessionMemoryService {
     this.trainingCompletion = false;
     this.mirrorStillnessDetected = false;
     this.mirrorSequenceCompleted = false;
+    this.mirrorReactionTelemetry = null;
+
+    this.predictionExactMatches = 0;
+    this.predictionNearMatches = 0;
+    this.predictionFailures = 0;
 
     this.machineId = undefined;
     this.machineClass = undefined;
@@ -283,6 +312,38 @@ class SessionMemoryService {
     this.mirrorSequenceCompleted = completed;
   }
 
+  public recordPredictionOutcome(outcome: 'EXACT_MATCH' | 'NEAR_MATCH' | 'FAILURE'): void {
+    if (outcome === 'EXACT_MATCH') this.predictionExactMatches++;
+    else if (outcome === 'NEAR_MATCH') this.predictionNearMatches++;
+    else this.predictionFailures++;
+  }
+
+  public recordMirrorReactionTelemetry(
+    telemetry: {
+      maxMotionEnergy: number;
+      stillDurationMs: number;
+      rapidSpikes: number;
+      desyncIntensity: number;
+      sampleCount: number;
+    },
+    source: MirrorTelemetrySource
+  ): boolean {
+    // Synthetic fallback motion is a visual device only. It can never become
+    // behavioral evidence or alter MachineDNA.
+    if (source !== 'FACE_TRACKER' || telemetry.sampleCount <= 0) {
+      return false;
+    }
+
+    this.mirrorReactionTelemetry = {
+      ...telemetry,
+      source: 'FACE_TRACKER',
+    };
+    if (telemetry.stillDurationMs >= 1200) {
+      this.mirrorStillnessDetected = true;
+    }
+    return true;
+  }
+
   public recordFinalOutputs(outputs: {
     machineId: string;
     machineClass: string;
@@ -325,6 +386,10 @@ class SessionMemoryService {
       trainingCompletion: this.trainingCompletion,
       mirrorStillnessDetected: this.mirrorStillnessDetected,
       mirrorSequenceCompleted: this.mirrorSequenceCompleted,
+      mirrorReactionTelemetry: this.mirrorReactionTelemetry,
+      predictionExactMatches: this.predictionExactMatches,
+      predictionNearMatches: this.predictionNearMatches,
+      predictionFailures: this.predictionFailures,
       machineId: this.machineId,
       machineClass: this.machineClass,
       ending: this.ending,

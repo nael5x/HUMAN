@@ -85,18 +85,30 @@ export function extractMachineDNA(session: SessionData): MachineDNA {
   // decisionSpeed: faster response -> closer to 1.0 (clamped between 400ms and 4500ms)
   const decisionSpeed = clamp01(1 - (decisionLatency - 400) / 3800);
 
-  // predictability: from prediction test or predictabilityScore
+  // predictability: from prediction test or predictabilityScore + sealed prediction outcomes
   const predScore = session.predictabilityScore ?? (sessionMemory.getPredictionTest()?.predictabilityScore ?? 66);
-  const predictability = clamp01(predScore / 100);
+  let predictability = clamp01(predScore / 100);
+  const totalPredTrials = summary.predictionExactMatches + summary.predictionNearMatches + summary.predictionFailures;
+  if (totalPredTrials > 0) {
+    const sealedMatchRatio = (summary.predictionExactMatches * 1.0 + summary.predictionNearMatches * 0.7) / totalPredTrials;
+    predictability = clamp01(predictability * 0.65 + sealedMatchRatio * 0.35);
+  }
 
-  // motorChaos: driven by direction changes, overshoots, corrections, trajectory
+  // motorChaos: driven by direction changes, overshoots, corrections, trajectory, and
+  // genuine FaceTracker mirror spikes only. Synthetic fallback motion is never behavioral evidence.
   const trajectoryFactor =
     motor.trajectory === 'erratic' ? 0.4 : motor.trajectory === 'irregular' ? 0.25 : 0.05;
+  const measuredMirrorTelemetry =
+    summary.mirrorReactionTelemetry?.source === 'FACE_TRACKER'
+      ? summary.mirrorReactionTelemetry
+      : null;
+  const mirrorSpikeFactor = measuredMirrorTelemetry ? measuredMirrorTelemetry.rapidSpikes * 0.04 : 0;
   const motorChaos = clamp01(
     (motor.corrections * 0.12) +
     (motor.overshoots * 0.14) +
     (summary.directionChanges * 0.02) +
-    trajectoryFactor
+    trajectoryFactor +
+    mirrorSpikeFactor
   );
 
   // motorPrecision: inverse of chaos, weighted by score

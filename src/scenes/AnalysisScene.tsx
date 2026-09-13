@@ -103,7 +103,7 @@ export const AnalysisScene: React.FC<AnalysisSceneProps> = ({
       {/* Top Header */}
       <div className="border-b border-neutral-800/80 pb-4">
         <div className="text-xs text-neutral-500 tracking-widest uppercase">EVALUATION SUMMARY // CORE ANALYSIS</div>
-        <div className="text-xs text-neutral-600 mt-0.5">BAYESIAN PROBABILITY MATRIX</div>
+        <div className="text-xs text-neutral-600 mt-0.5">BEHAVIORAL PROBABILITY MATRIX</div>
       </div>
 
       {/* Main Analysis Display */}
