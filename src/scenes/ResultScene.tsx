@@ -1,15 +1,20 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { Download, Share2, RefreshCw, Check, Swords } from 'lucide-react';
+import { Download, RefreshCw, Check, Swords } from 'lucide-react';
 import { sound } from '../audio/AudioEngine';
 import { director } from '../director/ExperienceDirector';
 import { SessionData } from '../types';
-import { extractMachineDNA, MachineDNA, resolveMachineArchetype } from '../dna/MachineDNA';
+import { extractMachineDNA, MachineDNA, resolveMachineArchetype, EndingType } from '../dna/MachineDNA';
 import { EndingResolver } from '../dna/EndingResolver';
 import { MachineTwinCanvas } from '../visuals/MachineTwinCanvas';
 import { computeMachineTwinProfile, renderStaticMachineTwin } from '../visuals/MachineTwinProfile';
 import { SecretResolver } from '../behavior/SecretRegistry';
 import { userMemory } from '../memory/UserMemory';
 import { ChallengeProtocol, ChallengePayload } from '../utils/ChallengeMode';
+import {
+  compareMachineTwins,
+  challengerPayloadToRenderDNA,
+  ComparisonReport,
+} from '../challenge/ChallengeComparison';
 
 interface ResultSceneProps {
   session: SessionData;
@@ -43,6 +48,48 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, challenge, on
         ? 'CONTROLLED'
         : 'ADAPTIVE';
 
+  // Compare twins if user entered through a challenge
+  const comparison: ComparisonReport | null = useMemo(() => {
+    if (!challenge) return null;
+    return compareMachineTwins(machineDNA, ending.type, classification, challenge);
+  }, [challenge, machineDNA, ending.type, classification]);
+
+  const challengerDna = useMemo(() => {
+    if (!challenge) return null;
+    return challengerPayloadToRenderDNA(challenge);
+  }, [challenge]);
+
+  const challengerCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    if (!challenge || !challengerDna || !challengerCanvasRef.current) return;
+    const canvas = challengerCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const width = canvas.width;
+    const height = canvas.height;
+    ctx.clearRect(0, 0, width, height);
+
+    const chalProfile = computeMachineTwinProfile(
+      challengerDna,
+      (challenge.challengerEnding as EndingType) || 'VERIFIED',
+      { qualityTier: 'desktop' }
+    );
+
+    renderStaticMachineTwin(
+      ctx,
+      chalProfile,
+      width / 2,
+      height / 2,
+      Math.min(width, height) * 0.42,
+      {
+        seed: challengerDna.seed,
+        showAura: true,
+      }
+    );
+  }, [challenge, challengerDna]);
+
   const anomaliesDiscovered = useMemo(() => {
     return Math.max(SecretResolver.getDiscoveredCount(), userMemory.getMemory().secretsDiscovered.length);
   }, []);
@@ -74,19 +121,29 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, challenge, on
     };
   }, [classification, ending.type, humanity, modelId]);
 
-  // Generate shareable challenge link
+  // Generate shareable challenge link with V2 behavioral DNA traits
   const challengeUrl = useMemo(() => {
     return ChallengeProtocol.createChallengeUrl({
+      version: 2,
       challengerModelId: modelId,
       challengerHumanity: humanity,
       challengerEnding: ending.type,
       challengerClass: classification,
+      seed: machineDNA.seed,
+      predictability,
+      curiosity,
+      obedience,
+      instinct,
+      motorChaos: Math.round(machineDNA.motorChaos * 100),
+      decisionSpeed: Math.round(machineDNA.decisionSpeed * 100),
     });
-  }, [classification, ending.type, humanity, modelId]);
+  }, [classification, curiosity, ending.type, humanity, instinct, machineDNA, modelId, obedience, predictability]);
 
   const handleShare = async () => {
     sound.playClick(1100);
-    const shareText = `I scored ${humanity}% human. HUMAN? classified me as ${classification} [${ending.title}]. Prove you're human.`;
+    const shareText = comparison
+      ? `My challenge trace differed by ${comparison.divergenceScore} points from ${challenge?.challengerModelId}. My Machine Twin is Model ${modelId} [${classification}]. Compare yours.`
+      : `HUMAN? reconstructed my behavior as Machine Twin Model ${modelId} [${classification}]. See if your machine diverges.`;
 
     if (navigator.share) {
       try {
@@ -240,8 +297,16 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, challenge, on
       statsY += statSpacing;
     });
 
-    // Footer
+    // Challenge Trace Info on Card
     const footerY = height - 70;
+    ctx.fillStyle = challenge ? '#fbbf24' : '#71717a';
+    ctx.font = '16px "JetBrains Mono", monospace';
+    const challengeText = challenge
+      ? `CHALLENGE TRACE: ${comparison?.divergenceScore ?? 0}% DIFFERENCE FROM ${challenge.challengerModelId}`
+      : `MODEL ${modelId} // CHALLENGE TRACE AVAILABLE`;
+    ctx.fillText(challengeText, 80, footerY - 65);
+
+    // Footer
     ctx.fillStyle = '#27272a';
     ctx.fillRect(80, footerY - 50, width - 160, 2);
 
@@ -384,37 +449,128 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, challenge, on
             </div>
           </div>
 
-          {/* Challenge Comparison (If entering from a challenger's link) */}
-          {challenge && (
+          {/* Twin vs Twin Comparison Section (If entering from a challenger's link) */}
+          {challenge && comparison && (
             <div
-              className={`p-3.5 bg-amber-950/20 border border-amber-900/50 rounded text-xs font-mono space-y-2 transition-all duration-700 ${
-                revealPhase >= 2 ? 'opacity-100' : 'opacity-0'
+              id="twin-confrontation-panel"
+              className={`p-4 sm:p-5 bg-neutral-950 border border-neutral-800 rounded font-mono space-y-4 transition-all duration-700 ${
+                revealPhase >= 2 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
               }`}
             >
-              <div className="flex items-center gap-2 text-amber-500 font-bold uppercase tracking-wider text-[11px]">
-                <Swords className="w-3.5 h-3.5" />
-                <span>CHALLENGE EVALUATION</span>
-              </div>
-              <div className="grid grid-cols-2 gap-3 pt-1">
-                <div className="border border-neutral-800 bg-black/40 p-2 rounded">
-                  <div className="text-[10px] text-neutral-500 uppercase">YOUR HUMANITY</div>
-                  <div className="text-xl font-bold text-white">{humanity}%</div>
+              {/* Header Badge */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-neutral-800/80">
+                <div className="flex items-center gap-2">
+                  <Swords className="w-4 h-4 text-amber-500" />
+                  <span className="text-xs font-bold tracking-widest text-amber-500 uppercase">
+                    TWIN COMPARISON // SUBJECT TRACE CONTRAST
+                  </span>
                 </div>
-                <div className="border border-neutral-800 bg-black/40 p-2 rounded">
-                  <div className="text-[10px] text-neutral-500 uppercase">
-                    CHALLENGER ({challenge.challengerModelId})
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] uppercase text-neutral-500 tracking-wider">
+                    {comparison.verdictTitle}
+                  </span>
+                  <span className="px-2 py-0.5 bg-neutral-900 border border-neutral-700 text-white font-bold text-[11px] rounded">
+                    TRACE DIFFERENCE {comparison.divergenceScore}%
+                  </span>
+                </div>
+              </div>
+
+              {/* Side-by-Side Dual Machine Twins Display */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* User Twin Card */}
+                <div className="relative border border-neutral-800 bg-black/60 p-3 rounded flex flex-col items-center">
+                  <div className="w-full flex items-center justify-between text-[10px] tracking-wider text-neutral-400 mb-1">
+                    <span className="text-emerald-400 font-bold">SUBJECT (YOU)</span>
+                    <span className="text-white font-bold">{modelId}</span>
                   </div>
-                  <div className="text-xl font-bold text-amber-400">
-                    {challenge.challengerHumanity}%
+                  <div className="w-32 h-32 flex items-center justify-center my-1">
+                    <MachineTwinCanvas
+                      dna={machineDNA}
+                      ending={ending.type}
+                      interactive={false}
+                      assemblyProgress={1.0}
+                      className="w-full h-full"
+                    />
+                  </div>
+                  <div className="w-full pt-1.5 border-t border-neutral-800 flex items-center justify-between text-[11px]">
+                    <span className="text-neutral-500">{classification}</span>
+                    <span className="text-white font-bold">{humanity}%</span>
+                  </div>
+                </div>
+
+                {/* Challenger Twin Card */}
+                <div className="relative border border-amber-900/40 bg-amber-950/15 p-3 rounded flex flex-col items-center">
+                  <div className="w-full flex items-center justify-between text-[10px] tracking-wider text-neutral-400 mb-1">
+                    <span className="text-amber-500 font-bold">CHALLENGER TRACE</span>
+                    <span className="text-amber-400 font-bold">{challenge.challengerModelId}</span>
+                  </div>
+                  <div className="w-32 h-32 flex items-center justify-center my-1">
+                    <canvas
+                      ref={challengerCanvasRef}
+                      width={256}
+                      height={256}
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                  <div className="w-full pt-1.5 border-t border-amber-900/30 flex items-center justify-between text-[11px]">
+                    <span className="text-neutral-400">{challenge.challengerClass}</span>
+                    <span className="text-amber-400 font-bold">{challenge.challengerHumanity}%</span>
                   </div>
                 </div>
               </div>
-              <div className="text-[11px] text-neutral-400 italic">
-                {humanity > challenge.challengerHumanity
-                  ? 'Your organic variance surpassed the challenger.'
-                  : humanity === challenge.challengerHumanity
-                    ? 'Identical organic variance recorded.'
-                    : 'The challenger demonstrated greater biological variation.'}
+
+              {/* Trait Comparison Delta Bars */}
+              <div className="space-y-2 pt-2 border-t border-neutral-800">
+                <div className="text-[10px] text-neutral-500 uppercase tracking-wider flex justify-between">
+                  <span>DIMENSIONAL BREAKDOWN</span>
+                  <span>
+                    DOMINANT: <span className="text-amber-400 font-bold">{comparison.dominantDivergenceTrait}</span>
+                  </span>
+                </div>
+                {Object.values(comparison.traits).map((tr) => (
+                  <div key={tr.name} className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-neutral-400">{tr.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-neutral-200">{tr.userValue}%</span>
+                        <span className="text-neutral-600">vs</span>
+                        <span className="text-amber-400/80">{tr.challengerValue}%</span>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${
+                            tr.delta > 0
+                              ? 'text-emerald-400 bg-emerald-950/40'
+                              : tr.delta < 0
+                                ? 'text-amber-400 bg-amber-950/40'
+                                : 'text-neutral-400 bg-neutral-900'
+                          }`}
+                        >
+                          {tr.delta > 0 ? `+${tr.delta}%` : `${tr.delta}%`}
+                        </span>
+                      </div>
+                    </div>
+                    {/* Comparative Dual Progress Bar */}
+                    <div className="h-1.5 w-full bg-neutral-900 rounded-full overflow-hidden flex">
+                      <div
+                        className="h-full bg-white transition-all duration-500"
+                        style={{ width: `${tr.userValue}%` }}
+                      />
+                      <div
+                        className="h-full bg-amber-500/60 transition-all duration-500"
+                        style={{ width: `${tr.challengerValue}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Narrative Observations */}
+              <div className="p-3 bg-black/40 border border-neutral-800 text-xs text-neutral-400 leading-relaxed space-y-1">
+                {comparison.narrativeObservations.map((obs, idx) => (
+                  <div key={idx} className="flex items-start gap-2">
+                    <span className="text-amber-500/80 font-bold">•</span>
+                    <span>{obs}</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -528,29 +684,29 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, challenge, on
             </div>
           </div>
 
-          {/* Action Buttons: SAVE RESULT, SHARE, TRY AGAIN */}
+          {/* Action Buttons: CHALLENGE SOMEONE, SAVE TWIN, TRY AGAIN */}
           <div
             className={`grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-neutral-800/60 transition-all duration-700 ${
               revealPhase >= 4 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
             }`}
           >
             <button
-              id="btn-save-result"
-              onClick={handleSaveImage}
-              disabled={isGeneratingImg}
-              className="flex items-center justify-center gap-2 py-3 px-3 bg-white hover:bg-neutral-200 text-black font-mono font-bold text-xs tracking-wider transition-all duration-200 cursor-pointer uppercase active:scale-98"
+              id="btn-challenge-someone"
+              onClick={handleShare}
+              className="flex items-center justify-center gap-2 py-3 px-3 bg-white hover:bg-neutral-200 text-black font-mono font-bold text-xs tracking-wider transition-all duration-200 cursor-pointer uppercase active:scale-98 shadow-[0_0_20px_rgba(255,255,255,0.12)]"
             >
-              <Download className="w-3.5 h-3.5" />
-              <span>{isGeneratingImg ? 'SAVING...' : 'SAVE TWIN'}</span>
+              {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Swords className="w-4 h-4" />}
+              <span>{copied ? 'LINK COPIED' : 'CHALLENGE SOMEONE'}</span>
             </button>
 
             <button
-              id="btn-share-result"
-              onClick={handleShare}
+              id="btn-save-result"
+              onClick={handleSaveImage}
+              disabled={isGeneratingImg}
               className="flex items-center justify-center gap-2 py-3 px-3 border border-neutral-700 hover:border-neutral-500 text-neutral-200 hover:text-white bg-neutral-900/60 font-mono text-xs tracking-wider transition-colors cursor-pointer uppercase active:scale-98"
             >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Share2 className="w-3.5 h-3.5" />}
-              <span>{copied ? 'LINK COPIED' : 'CHALLENGE'}</span>
+              <Download className="w-3.5 h-3.5" />
+              <span>{isGeneratingImg ? 'RENDERING...' : 'SAVE TWIN'}</span>
             </button>
 
             <button

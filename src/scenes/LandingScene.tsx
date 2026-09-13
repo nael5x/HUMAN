@@ -25,6 +25,9 @@ export const LandingScene: React.FC<LandingSceneProps> = ({
   // Determine optional returning subtitle based on seed
   const returningSubtext = (() => {
     if (!isReturning) return null;
+    if (challenge) {
+      return 'Prior subject recognized. New trace incoming.';
+    }
     const variant = Math.abs(seed) % 4;
     if (variant === 0 && userMem.previousMachineId) {
       return `${userMem.previousMachineId}?`;
@@ -35,7 +38,7 @@ export const LandingScene: React.FC<LandingSceneProps> = ({
     if (variant === 2) {
       return "We've met before.";
     }
-    return null;
+    return 'Prior subject trace detected.';
   })();
 
   useEffect(() => {
@@ -63,22 +66,32 @@ export const LandingScene: React.FC<LandingSceneProps> = ({
         {/* Challenge Banner if entering via a challenge link */}
         {challenge && (
           <div
-            className={`transition-all duration-700 ease-out border border-amber-900/60 bg-amber-950/30 px-5 py-3 rounded-sm text-left max-w-md w-full shadow-[0_0_20px_rgba(245,158,11,0.08)] ${
+            id="challenge-trace-banner"
+            className={`transition-all duration-700 ease-out border border-amber-900/60 bg-amber-950/25 px-5 py-3.5 rounded-sm text-left max-w-md w-full shadow-[0_0_25px_rgba(245,158,11,0.08)] ${
               phase >= 1 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
             }`}
           >
-            <div className="text-[11px] font-mono tracking-widest text-amber-500 uppercase">
-              CHALLENGE INITIATED
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono tracking-[0.25em] text-amber-500 uppercase font-bold">
+                INCOMING SUBJECT TRACE
+              </span>
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
             </div>
-            <div className="text-white font-mono text-sm sm:text-base font-bold mt-0.5">
-              {challenge.challengerModelId} challenged you.
+            <p className="text-[11px] font-mono text-neutral-400 mt-1 leading-relaxed">
+              A previous subject left a behavioral signature.
+            </p>
+            <div className="mt-2.5 pt-2 border-t border-amber-900/40 grid grid-cols-2 gap-2 text-xs font-mono">
+              <div>
+                <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">MODEL</span>
+                <span className="text-white font-bold">{challenge.challengerModelId}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">CLASSIFICATION</span>
+                <span className="text-amber-400 font-bold truncate block">{challenge.challengerClass}</span>
+              </div>
             </div>
-            <div className="flex items-center justify-between mt-2 pt-2 border-t border-amber-900/40 text-xs font-mono text-neutral-300">
-              <span>RECORDED SCORE:</span>
-              <span className="font-bold text-amber-400">{challenge.challengerHumanity}% HUMAN</span>
-            </div>
-            <div className="text-[11px] font-mono text-neutral-400 mt-1 italic">
-              Can you do better?
+            <div className="text-[11px] font-mono text-neutral-400 mt-2 italic border-t border-amber-900/30 pt-1.5">
+              Can you diverge from it?
             </div>
           </div>
         )}
