@@ -1,15 +1,26 @@
-HUMAN? V2.2 Integrity Fix — PATCH ONLY
+HUMAN? V2.3 — Machine Twin Evolution — PATCH ONLY
 
-This archive contains ONLY the files changed by the integrity correction.
+This archive intentionally contains ONLY the V2.3 functional code/test files.
+It does NOT replace your V2.2 project, Vite config, GitHub Pages config, package files, Prediction/Mirror code, or existing tests.
 
-Apply:
-1. Copy all files/folders from this archive into your existing HUMAN project root.
-2. Choose Replace/Overwrite when Windows asks.
-3. Delete bun.lock from the project root if it exists.
-4. Do NOT delete .git, node_modules, package-lock.json, or any other project files.
-5. Then run:
-   npm run typecheck
-   npm run test
-   npm run build
+Files included:
+- src/visuals/MachineTwinProfile.ts          (new)
+- src/visuals/MachineTwinCanvas.tsx          (replace existing)
+- src/scenes/ResultScene.tsx                 (replace existing)
+- src/__tests__/MachineTwinProfile.test.ts   (new)
 
-Expected test count after applying this patch: 52 tests across 7 test files.
+Why docs are not included:
+The Gemini V2.3 project was built on an older 48-test V2.2 branch. Its README/DEVELOPMENT_STATUS test counts therefore do not match the protected current baseline. Keeping the current documentation avoids reintroducing stale baseline claims; docs can be updated after local verification.
+
+Expected protected-baseline result after applying this patch:
+- Existing V2.2 tests: 52
+- New MachineTwinProfile tests: 12
+- Expected total: 64 tests across 8 test files
+
+After copying into the project root with Replace/Overwrite, run:
+  npm run typecheck
+  npm run test
+  npm run build
+
+Do NOT copy vite.config.ts from the Gemini full ZIP. Your current project must retain base: '/HUMAN/' for GitHub Pages.
+Do NOT copy the full Gemini ZIP over the project.

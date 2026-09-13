@@ -1,12 +1,14 @@
 import React, { useEffect, useRef } from 'react';
-import { MachineDNA, SeededRandom, EndingType } from '../dna/MachineDNA';
+import { MachineDNA, EndingType, SeededRandom } from '../dna/MachineDNA';
+import { computeMachineTwinProfile, MachineTwinVisualProfile } from './MachineTwinProfile';
 
-interface MachineTwinCanvasProps {
+export interface MachineTwinCanvasProps {
   dna: MachineDNA;
   ending: EndingType;
+  profile?: MachineTwinVisualProfile; // Optional pre-computed visual profile
   interactive?: boolean;
   qualityTier?: 'desktop' | 'tablet' | 'mobile';
-  assemblyProgress?: number; // 0.0 to 1.0 (for gradual layer reveal)
+  assemblyProgress?: number; // 0.0 to 1.0 (for gradual layer reveal in reconstruction)
   className?: string;
 }
 
@@ -26,13 +28,16 @@ interface Particle {
 /**
  * MachineTwinCanvas
  * Procedural biological-mechanical organism assembled deterministically from MachineDNA.
- * Respects performance tiers, reduced-motion preferences, and subtle tactile pointer interaction.
+ * Encodes behavioral traits via MachineTwinVisualProfile into geometry, symmetry,
+ * orbital reticles, network topology, and particle dynamics.
+ * Respects performance quality tiers, reduced-motion preferences, and subtle tactile pointer interaction.
  */
 export const MachineTwinCanvas: React.FC<MachineTwinCanvasProps> = ({
   dna,
   ending,
+  profile: customProfile,
   interactive = true,
-  qualityTier = 'desktop',
+  qualityTier,
   assemblyProgress = 1.0,
   className = '',
 }) => {
@@ -60,41 +65,49 @@ export const MachineTwinCanvas: React.FC<MachineTwinCanvasProps> = ({
     let cancelled = false;
     let isTabVisible = !document.hidden;
 
-    const handleVisibilityChange = () => {
-      isTabVisible = !document.hidden;
-      if (isTabVisible && !cancelled) {
-        cancelAnimationFrame(animId);
-        animId = requestAnimationFrame(render);
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
     // Auto-detect tier if not explicitly specified
-    const detectedTier = qualityTier || (
-      typeof window !== 'undefined' && window.innerWidth < 640 ? 'mobile' :
-      typeof window !== 'undefined' && window.innerWidth < 1024 ? 'tablet' : 'desktop'
-    );
+    const detectedTier =
+      qualityTier ||
+      (typeof window !== 'undefined' && window.innerWidth < 640
+        ? 'mobile'
+        : typeof window !== 'undefined' && window.innerWidth < 1024
+          ? 'tablet'
+          : 'desktop');
 
     // Check prefers-reduced-motion
     const prefersReducedMotion =
       typeof window !== 'undefined' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    // Quality tier constants
-    const particleMultiplier =
-      detectedTier === 'mobile' ? 0.35 : detectedTier === 'tablet' ? 0.65 : 1.0;
-    const shellLayersCount =
-      detectedTier === 'mobile' ? 4 : detectedTier === 'tablet' ? 6 : 8;
+    // Compute or use provided visual profile
+    const profile =
+      customProfile ||
+      computeMachineTwinProfile(dna, ending, {
+        qualityTier: detectedTier,
+        prefersReducedMotion,
+      });
 
-    // Seeded random initialization for deterministic geometry
+    // Handle tab visibility changes without erratic time jumps or duplicate RAF loops
+    let lastFrameTime = performance.now();
+    const handleVisibilityChange = () => {
+      isTabVisible = !document.hidden;
+      if (isTabVisible && !cancelled) {
+        lastFrameTime = performance.now();
+        cancelAnimationFrame(animId);
+        animId = requestAnimationFrame(render);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Seeded random for deterministic particle field
     const rng = new SeededRandom(dna.seed);
 
     // Assembly thresholds:
-    // CORE: 0.0 -> 0.25
-    // STRUCTURE: 0.2 -> 0.50
-    // SIGNAL LINES: 0.45 -> 0.70
-    // SENSORS: 0.65 -> 0.85
-    // PARTICLES / AURA: 0.80 -> 1.0
+    // CORE: 0.05
+    // STRUCTURE: 0.20
+    // SIGNAL LINES: 0.45
+    // SENSORS: 0.65
+    // PARTICLES / AURA: 0.80
     const p = Math.max(0, Math.min(1, assemblyProgress));
     const showCore = p > 0.05;
     const showStructure = p > 0.2;
@@ -102,15 +115,13 @@ export const MachineTwinCanvas: React.FC<MachineTwinCanvasProps> = ({
     const showSensors = p > 0.65;
     const showParticles = p > 0.8;
 
-    // Generate deterministic particles based on DNA
-    const baseParticleCount = Math.floor(
-      (25 + dna.curiosity * 55 + dna.motorChaos * 30) * particleMultiplier
-    );
+    // Pre-allocate deterministic particles according to profile density
+    const particleCount = Math.floor(25 + profile.particleDensity * 45);
     const particles: Particle[] = [];
 
-    for (let i = 0; i < baseParticleCount; i++) {
+    for (let i = 0; i < particleCount; i++) {
       const angle = rng.range(0, Math.PI * 2);
-      const dist = rng.range(28, 145);
+      const dist = rng.range(28, 150);
       particles.push({
         x: 0,
         y: 0,
@@ -120,63 +131,33 @@ export const MachineTwinCanvas: React.FC<MachineTwinCanvasProps> = ({
         alpha: rng.range(0.2, 0.75),
         orbitAngle: angle,
         orbitDist: dist,
-        orbitSpeed: (rng.range(0.003, 0.012) + dna.instinct * 0.008) * (rng.next() > 0.5 ? 1 : -1),
+        orbitSpeed:
+          (rng.range(0.003, 0.012) + (1 - dna.hesitation) * 0.006) *
+          (rng.next() > 0.5 ? 1 : -1),
         seedOffset: rng.range(0, 1000),
       });
     }
 
-    // Colors according to Ending
-    // VERIFIED: clinical emerald + crisp titanium white
-    // ANOMALY: violet/amber + subtle warning crimson
-    // MACHINE: cold sharp cyan + stark white
-    // REPLACED: dual-phase pale emerald + phantom crimson echo
-    const getEndingColors = () => {
-      switch (ending) {
-        case 'ANOMALY':
-          return {
-            primary: '245, 158, 11',    // amber
-            accent: '239, 68, 68',      // red
-            aura: 'rgba(245, 158, 11, 0.08)',
-          };
-        case 'MACHINE':
-          return {
-            primary: '56, 189, 248',    // sky/cyan
-            accent: '240, 249, 255',    // cold white
-            aura: 'rgba(56, 189, 248, 0.07)',
-          };
-        case 'REPLACED':
-          return {
-            primary: '52, 211, 153',    // emerald
-            accent: '244, 63, 94',      // rose echo
-            aura: 'rgba(52, 211, 153, 0.09)',
-          };
-        case 'VERIFIED':
-        default:
-          return {
-            primary: '16, 185, 129',    // emerald
-            accent: '228, 228, 231',    // titanium neutral
-            aura: 'rgba(16, 185, 129, 0.06)',
-          };
-      }
-    };
+    const colors = profile.colors;
+    let t = (dna.seed % 1000) * 0.01;
 
-    const colors = getEndingColors();
-    let t = dna.seed * 0.01;
-
-    // Movement responsiveness derived from Session DNA:
-    // High motor speed -> snappier mouse follow
-    // High hesitation -> slight sluggish easing
+    // Pointer follow easing
     const mouseFollowEase = Math.max(
       0.03,
-      Math.min(0.18, 0.08 + dna.instinct * 0.06 - dna.hesitation * 0.04)
+      Math.min(0.20, profile.sensorResponsiveness + 0.04)
     );
 
-    const render = () => {
-      if (cancelled) return;
+    const render = (nowTime: number) => {
+      if (cancelled || !isTabVisible) return;
 
-      const timeIncrement = prefersReducedMotion
-        ? 0.004
-        : 0.012 + dna.instinct * 0.022 * (dna.predictability > 0.7 ? 1 : 0.85);
+      // Delta time calculation with clamp to prevent skips after tab reactivation
+      const dt = Math.min(0.064, (nowTime - lastFrameTime) / 1000 || 0.016);
+      lastFrameTime = nowTime;
+
+      const timeIncrement =
+        dt *
+        (prefersReducedMotion ? 0.35 : 1.0) *
+        (0.6 + profile.corePulseRate * 0.4);
       t += timeIncrement;
 
       const w = canvas.width;
@@ -194,9 +175,9 @@ export const MachineTwinCanvas: React.FC<MachineTwinCanvasProps> = ({
 
       // 1. AURA / FIELD (Assembly Layer 5)
       if (showParticles) {
-        const auraRadius = Math.min(w, h) * (0.34 + dna.curiosity * 0.12);
-        const auraGrad = ctx.createRadialGradient(cx, cy, 10, cx, cy, auraRadius);
-        auraGrad.addColorStop(0, colors.aura);
+        const auraRadius = Math.min(w, h) * profile.particleFieldRadius;
+        const auraGrad = ctx.createRadialGradient(cx, cy, 8, cx, cy, auraRadius);
+        auraGrad.addColorStop(0, colors.auraRgba);
         auraGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = auraGrad;
         ctx.beginPath();
@@ -206,23 +187,32 @@ export const MachineTwinCanvas: React.FC<MachineTwinCanvasProps> = ({
 
       // 2. SHELL / STRUCTURAL GEOMETRIC LAYERS (Assembly Layer 2)
       if (showStructure) {
+        const shellCount = profile.shellCount;
         const baseRadius = Math.min(w, h) * 0.12;
-        const asymmetryOffset = (1 - dna.obedience) * 16;
-        const organicPulse = dna.humanity * Math.sin(t * 1.8) * 3;
+        const isHighSymmetry = profile.structuralSymmetry > 0.68;
+        const asymmetryOffset = profile.structuralAsymmetry * 18;
+        const organicPulse =
+          (1 - profile.structuralSymmetry) * Math.sin(t * 1.8) * 3;
 
-        for (let r = 0; r < shellLayersCount; r++) {
-          const layerNorm = r / (shellLayersCount - 1);
+        for (let r = 0; r < shellCount; r++) {
+          const layerNorm = r / (shellCount - 1 || 1);
           const currentRadius =
             baseRadius +
-            r * (Math.min(w, h) * 0.032) +
-            (dna.motorChaos * Math.sin(t * 3.5 + r) * 4);
+            r * (Math.min(w, h) * profile.shellSpacing) +
+            (profile.structuralJitter * Math.sin(t * 3.2 + r) * 4);
 
-          // Predictability: High predictability -> round symmetric polygon; Low -> distorted harmonic
-          const pointsCount = dna.predictability > 0.7 ? 6 + (r % 3) * 2 : 28 + r * 4;
+          // Points count & topology:
+          // High symmetry -> crisp regular polygon (e.g. 6 or 8 vertices)
+          // Low symmetry -> organic wave modes
+          const pointsCount = isHighSymmetry
+            ? profile.structuralComplexity
+            : Math.floor(24 + r * 4);
+
           const wobble =
-            (2.2 + r * 1.2) *
-            (1 + (1 - dna.obedience) * 0.8) *
-            (1 + m.clickEnergy * 0.5);
+            (2.0 + r * 1.2) *
+            (1 - profile.structuralSymmetry * 0.75) *
+            (1 + profile.structuralJitter * 0.8) *
+            (1 + m.clickEnergy * 0.4);
 
           ctx.beginPath();
           for (let i = 0; i <= pointsCount; i++) {
@@ -236,7 +226,7 @@ export const MachineTwinCanvas: React.FC<MachineTwinCanvasProps> = ({
             const rOffset =
               wave * wobble +
               organicPulse +
-              (i % 2 === 0 ? asymmetryOffset * (r % 2 === 0 ? 1 : -1) * 0.2 : 0);
+              (i % 2 === 0 ? asymmetryOffset * (r % 2 === 0 ? 1 : -1) * 0.25 : 0);
             const px = cx + Math.cos(angle) * (currentRadius + rOffset);
             const py = cy + Math.sin(angle) * (currentRadius + rOffset);
 
@@ -250,85 +240,135 @@ export const MachineTwinCanvas: React.FC<MachineTwinCanvasProps> = ({
             Math.min(0.85, 0.18 + layerNorm * 0.55 * (0.5 + dna.humanity * 0.5))
           );
           ctx.strokeStyle =
-            r === shellLayersCount - 1
-              ? `rgba(${colors.primary}, ${opacity})`
-              : `rgba(${colors.accent}, ${opacity * 0.7})`;
-          ctx.lineWidth = r === shellLayersCount - 1 ? 1.8 : 1.0;
+            r === shellCount - 1
+              ? `rgba(${colors.primaryRgb}, ${opacity})`
+              : `rgba(${colors.accentRgb}, ${opacity * 0.75})`;
+          ctx.lineWidth = r === shellCount - 1 ? 1.8 : 1.0;
           ctx.stroke();
 
-          // Rare REPLACED ending: phantom duplicate shell echo
-          if (ending === 'REPLACED' && r % 2 === 0) {
+          // REPLACED ending: phantom duplicate shell echo
+          if (profile.phantomShellEcho && r % 2 === 0) {
             ctx.beginPath();
-            ctx.arc(cx + 4, cy - 3, currentRadius * 0.94, 0, Math.PI * 2);
-            ctx.strokeStyle = `rgba(${colors.accent}, ${opacity * 0.35})`;
+            ctx.arc(
+              cx + profile.coreEchoOffset.x * 0.8,
+              cy + profile.coreEchoOffset.y * 0.8,
+              currentRadius * 0.94,
+              0,
+              Math.PI * 2
+            );
+            ctx.strokeStyle = `rgba(${colors.accentRgb}, ${opacity * 0.35})`;
             ctx.lineWidth = 0.8;
             ctx.stroke();
           }
         }
       }
 
-      // 3. SIGNAL LINES / NETWORK NODES (Assembly Layer 3)
+      // 3. SIGNAL NETWORK FILAMENTS (Assembly Layer 3)
       if (showSignals) {
-        const signalNodesCount = Math.floor(4 + dna.curiosity * 8);
-        const signalRadius = Math.min(w, h) * 0.24;
+        const signalNodesCount = profile.networkNodeCount;
+        const signalRadius = Math.min(w, h) * profile.networkRadius;
 
-        ctx.strokeStyle = `rgba(${colors.primary}, 0.28)`;
+        ctx.strokeStyle = `rgba(${colors.primaryRgb}, 0.28)`;
         ctx.lineWidth = 0.8;
+
+        const nodeCoords: Array<{ x: number; y: number }> = [];
 
         for (let i = 0; i < signalNodesCount; i++) {
           const angle =
             (i / signalNodesCount) * Math.PI * 2 +
-            t * (0.4 + (i % 2) * 0.2) * (prefersReducedMotion ? 0.3 : 1);
-          const nodeDist = signalRadius + Math.sin(t * 2 + i) * (dna.motorChaos * 12);
+            t * (0.3 + (i % 2) * 0.15) * (prefersReducedMotion ? 0.3 : 1);
+          const nodeDist =
+            signalRadius +
+            Math.sin(t * profile.networkPulseSpeed + i) *
+              (profile.instability * 14);
           const nx = cx + Math.cos(angle) * nodeDist;
           const ny = cy + Math.sin(angle) * nodeDist;
+          nodeCoords.push({ x: nx, y: ny });
 
-          // Connect to core center
+          // Center-to-node radial line
           ctx.beginPath();
           ctx.moveTo(cx, cy);
           ctx.lineTo(nx, ny);
           ctx.stroke();
 
-          // Connect adjacent signals
-          if (i > 0 && dna.predictability > 0.4) {
-            const prevAngle =
-              ((i - 1) / signalNodesCount) * Math.PI * 2 +
-              t * (0.4 + ((i - 1) % 2) * 0.2) * (prefersReducedMotion ? 0.3 : 1);
-            const prevDist = signalRadius + Math.sin(t * 2 + (i - 1)) * (dna.motorChaos * 12);
+          // Signal pulse marker traveling along line
+          const pulsePhase = (t * profile.networkPulseSpeed * 0.5 + i * 0.2) % 1;
+          const px = cx + (nx - cx) * pulsePhase;
+          const py = cy + (ny - cy) * pulsePhase;
+          ctx.beginPath();
+          ctx.arc(px, py, 1.4, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${colors.primaryRgb}, 0.65)`;
+          ctx.fill();
+        }
+
+        // Inter-node connections (geodesic if stable, crossing chords if unstable)
+        if (profile.networkStability > 0.45) {
+          for (let i = 0; i < nodeCoords.length; i++) {
+            const nextNode = nodeCoords[(i + 1) % nodeCoords.length];
             ctx.beginPath();
-            ctx.moveTo(nx, ny);
-            ctx.lineTo(cx + Math.cos(prevAngle) * prevDist, cy + Math.sin(prevAngle) * prevDist);
-            ctx.strokeStyle = `rgba(${colors.primary}, 0.15)`;
+            ctx.moveTo(nodeCoords[i].x, nodeCoords[i].y);
+            ctx.lineTo(nextNode.x, nextNode.y);
+            ctx.strokeStyle = `rgba(${colors.primaryRgb}, 0.16)`;
+            ctx.stroke();
+          }
+        } else {
+          // Turbulent crossing filaments
+          for (let i = 0; i < nodeCoords.length; i += 2) {
+            const targetIdx = (i + 3) % nodeCoords.length;
+            ctx.beginPath();
+            ctx.moveTo(nodeCoords[i].x, nodeCoords[i].y);
+            ctx.lineTo(nodeCoords[targetIdx].x, nodeCoords[targetIdx].y);
+            ctx.strokeStyle = `rgba(${colors.primaryRgb}, 0.12)`;
             ctx.stroke();
           }
         }
       }
 
-      // 4. SENSORS / SATELLITES (Assembly Layer 4)
+      // 4. SENSOR SATELLITES & RETICLES (Assembly Layer 4)
       if (showSensors) {
-        const sensorCount = Math.floor(3 + dna.curiosity * 9);
+        const sensorCount = profile.sensorCount;
         for (let i = 0; i < sensorCount; i++) {
-          const speed = (0.3 + i * 0.08) * (i % 2 === 0 ? 1 : -1);
+          const speed =
+            (0.25 + i * 0.07) *
+            profile.sensorResponsiveness *
+            8 *
+            (i % 2 === 0 ? 1 : -1);
           const orbit =
-            Math.min(w, h) * (0.22 + (i % 3) * 0.05 + dna.exploration * 0.08);
+            Math.min(w, h) *
+            (profile.sensorOrbitRadius + (i % 3) * 0.03);
           const angle =
             t * speed +
             (i / sensorCount) * Math.PI * 2 +
             dna.seed * 0.01;
-          const sx = cx + Math.cos(angle) * orbit;
-          const sy = cy + Math.sin(angle * 1.05) * orbit;
 
+          const ecc = profile.sensorOrbitEccentricity;
+          const sx = cx + Math.cos(angle) * orbit;
+          const sy = cy + Math.sin(angle) * orbit * (1 - ecc);
+
+          // Sensor dot
           ctx.beginPath();
           ctx.arc(sx, sy, 2.2 + m.clickEnergy * 1.5, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(${colors.primary}, 0.85)`;
+          ctx.fillStyle = `rgba(${colors.primaryRgb}, 0.88)`;
           ctx.fill();
 
-          // Sensor targeting reticle tick
-          if (i % 2 === 0) {
+          // Reticle ring
+          if (profile.sensorReticleComplexity >= 2) {
             ctx.beginPath();
             ctx.arc(sx, sy, 5.5, 0, Math.PI * 2);
-            ctx.strokeStyle = `rgba(${colors.primary}, 0.35)`;
+            ctx.strokeStyle = `rgba(${colors.primaryRgb}, 0.38)`;
             ctx.lineWidth = 0.8;
+            ctx.stroke();
+          }
+
+          // Reticle crosshair ticks
+          if (profile.sensorReticleComplexity >= 3) {
+            ctx.beginPath();
+            ctx.moveTo(sx - 7, sy);
+            ctx.lineTo(sx + 7, sy);
+            ctx.moveTo(sx, sy - 7);
+            ctx.lineTo(sx, sy + 7);
+            ctx.strokeStyle = `rgba(${colors.accentRgb}, 0.35)`;
+            ctx.lineWidth = 0.7;
             ctx.stroke();
           }
         }
@@ -337,15 +377,26 @@ export const MachineTwinCanvas: React.FC<MachineTwinCanvasProps> = ({
       // 5. PARTICLES FIELD (Assembly Layer 5)
       if (showParticles) {
         particles.forEach((pt) => {
-          pt.orbitAngle += pt.orbitSpeed;
-          const distMod = Math.sin(t * 1.5 + pt.seedOffset) * 8 * dna.motorChaos;
-          const targetDist = pt.orbitDist + distMod + m.speed * 15;
+          pt.orbitAngle += pt.orbitSpeed * profile.particleVelocity;
+          const distMod =
+            Math.sin(t * 1.5 + pt.seedOffset) * 8 * profile.particleTurbulence;
+          const targetDist =
+            pt.orbitDist * (profile.particleFieldRadius / 0.38) +
+            distMod +
+            m.speed * 12;
           pt.x = cx + Math.cos(pt.orbitAngle) * targetDist;
           pt.y = cy + Math.sin(pt.orbitAngle) * targetDist;
 
           ctx.beginPath();
-          ctx.arc(pt.x, pt.y, pt.baseRadius * (1 + m.clickEnergy * 0.6), 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(${colors.primary}, ${pt.alpha})`;
+          ctx.arc(
+            pt.x,
+            pt.y,
+            pt.baseRadius * (1 + m.clickEnergy * 0.5),
+            0,
+            Math.PI * 2
+          );
+          const alpha = pt.alpha * profile.particlePersistence;
+          ctx.fillStyle = `rgba(${colors.primaryRgb}, ${alpha})`;
           ctx.fill();
         });
       }
@@ -353,14 +404,24 @@ export const MachineTwinCanvas: React.FC<MachineTwinCanvasProps> = ({
       // 6. CORE / NUCLEUS (Assembly Layer 1)
       if (showCore) {
         const corePulse =
-          (1 + Math.sin(t * (2.4 + dna.instinct * 2.8)) * 0.18) *
-          (1 + m.clickEnergy * 0.7);
-        const coreRadius = Math.min(w, h) * 0.045 * corePulse;
+          (1 +
+            Math.sin(t * profile.corePulseRate * 2.2) *
+              profile.corePulseAmplitude) *
+          (1 + m.clickEnergy * 0.6);
+        const coreRadius =
+          Math.min(w, h) * 0.045 * profile.coreScale * corePulse;
 
-        // Core glow
-        const coreGrad = ctx.createRadialGradient(cx, cy, 1, cx, cy, coreRadius * 2.2);
-        coreGrad.addColorStop(0, `rgba(${colors.primary}, 0.95)`);
-        coreGrad.addColorStop(0.5, `rgba(${colors.primary}, 0.35)`);
+        // Core ambient glow
+        const coreGrad = ctx.createRadialGradient(
+          cx,
+          cy,
+          1,
+          cx,
+          cy,
+          coreRadius * 2.2
+        );
+        coreGrad.addColorStop(0, `rgba(${colors.primaryRgb}, 0.95)`);
+        coreGrad.addColorStop(0.5, `rgba(${colors.primaryRgb}, 0.35)`);
         coreGrad.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = coreGrad;
         ctx.beginPath();
@@ -368,16 +429,22 @@ export const MachineTwinCanvas: React.FC<MachineTwinCanvasProps> = ({
         ctx.fill();
 
         // Inner nucleus
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = colors.coreHex;
         ctx.beginPath();
         ctx.arc(cx, cy, coreRadius * 0.55, 0, Math.PI * 2);
         ctx.fill();
 
-        // Rare REPLACED ending: double interior nucleus
-        if (ending === 'REPLACED') {
-          ctx.fillStyle = `rgba(${colors.accent}, 0.85)`;
+        // REPLACED ending dual nucleus
+        if (profile.coreDualNucleus && colors.echoRgb) {
+          ctx.fillStyle = `rgba(${colors.echoRgb}, 0.85)`;
           ctx.beginPath();
-          ctx.arc(cx + 6, cy - 4, coreRadius * 0.45, 0, Math.PI * 2);
+          ctx.arc(
+            cx + profile.coreEchoOffset.x,
+            cy + profile.coreEchoOffset.y,
+            coreRadius * 0.45,
+            0,
+            Math.PI * 2
+          );
           ctx.fill();
         }
       }
@@ -393,7 +460,7 @@ export const MachineTwinCanvas: React.FC<MachineTwinCanvasProps> = ({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       particles.length = 0;
     };
-  }, [dna, ending, qualityTier, assemblyProgress]);
+  }, [dna, ending, customProfile, qualityTier, assemblyProgress]);
 
   // Pointer and Touch Interaction Handlers
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -415,9 +482,6 @@ export const MachineTwinCanvas: React.FC<MachineTwinCanvasProps> = ({
 
   const handlePointerLeave = () => {
     const m = mouseRef.current;
-    // Obedience influence on return behavior:
-    // High obedience: quickly returns to center
-    // Low obedience: drifts slowly
     m.targetX = 0;
     m.targetY = 0;
     m.isHovering = false;

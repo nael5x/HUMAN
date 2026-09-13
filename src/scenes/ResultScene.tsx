@@ -6,6 +6,7 @@ import { SessionData } from '../types';
 import { extractMachineDNA, MachineDNA, resolveMachineArchetype } from '../dna/MachineDNA';
 import { EndingResolver } from '../dna/EndingResolver';
 import { MachineTwinCanvas } from '../visuals/MachineTwinCanvas';
+import { computeMachineTwinProfile, renderStaticMachineTwin } from '../visuals/MachineTwinProfile';
 import { SecretResolver } from '../behavior/SecretRegistry';
 import { userMemory } from '../memory/UserMemory';
 import { ChallengeProtocol, ChallengePayload } from '../utils/ChallengeMode';
@@ -199,27 +200,18 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, challenge, on
     ctx.font = 'bold 40px "JetBrains Mono", monospace';
     ctx.fillText(classification, 80, topPadding + 390);
 
-    // Center Organism Visual
+    // Center Organism Visual (Consistent with Live MachineTwinProfile)
     const cx = isSquare ? 820 : 540;
     const cy = isSquare ? topPadding + 240 : topPadding + 620;
     const organismRadius = isSquare ? 140 : 180;
 
-    ctx.strokeStyle = accentColor;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(cx, cy, organismRadius, 0, Math.PI * 2);
-    ctx.stroke();
-
-    for (let r = 1; r <= 5; r++) {
-      ctx.strokeStyle = `rgba(255, 255, 255, ${0.12 + r * 0.08})`;
-      ctx.beginPath();
-      ctx.arc(cx, cy, 24 + r * (organismRadius / 5), 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    ctx.fillStyle = accentColor;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 14, 0, Math.PI * 2);
-    ctx.fill();
+    const visualProfile = computeMachineTwinProfile(machineDNA, ending.type, {
+      qualityTier: 'desktop',
+    });
+    renderStaticMachineTwin(ctx, visualProfile, cx, cy, organismRadius, {
+      seed: machineDNA.seed,
+      showAura: true,
+    });
 
     // Stats Section
     let statsY = isSquare ? topPadding + 470 : topPadding + 910;
