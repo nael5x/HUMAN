@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { sound } from '../audio/AudioEngine';
 import { director } from '../director/ExperienceDirector';
 import { SessionData } from '../types';
-import { extractMachineDNA, resolveMachineArchetype, MachineDNA } from '../dna/MachineDNA';
+import { extractMachineDNA, resolveMachineArchetype, MachineDNA, MachineArchetype } from '../dna/MachineDNA';
 import { EndingResolver } from '../dna/EndingResolver';
 import { MachineTwinCanvas } from '../visuals/MachineTwinCanvas';
 import { sessionMemory } from '../memory/SessionMemory';
@@ -29,10 +29,27 @@ export const MachineReconstructionScene: React.FC<MachineReconstructionSceneProp
   const [textLogs, setTextLogs] = useState<string[]>([]);
   const [revealStep, setRevealStep] = useState<number>(0);
 
+  const onReconstructionCompleteRef = useRef(onReconstructionComplete);
+  onReconstructionCompleteRef.current = onReconstructionComplete;
+
   // Compute MachineDNA and Ending deterministically once for this session
-  const machineDNA: MachineDNA = useMemo(() => extractMachineDNA(session), [session]);
-  const resolvedEnding = useMemo(() => EndingResolver.resolve(machineDNA), [machineDNA]);
-  const machineArchetype = useMemo(() => resolveMachineArchetype(machineDNA), [machineDNA]);
+  const machineDNARef = useRef<MachineDNA | null>(null);
+  if (!machineDNARef.current) {
+    machineDNARef.current = extractMachineDNA(session);
+  }
+  const machineDNA = machineDNARef.current;
+
+  const resolvedEndingRef = useRef<ReturnType<typeof EndingResolver.resolve> | null>(null);
+  if (!resolvedEndingRef.current) {
+    resolvedEndingRef.current = EndingResolver.resolve(machineDNA);
+  }
+  const resolvedEnding = resolvedEndingRef.current;
+
+  const machineArchetypeRef = useRef<MachineArchetype | null>(null);
+  if (!machineArchetypeRef.current) {
+    machineArchetypeRef.current = resolveMachineArchetype(machineDNA);
+  }
+  const machineArchetype = machineArchetypeRef.current;
 
   useEffect(() => {
     // Narrative state: RECONSTRUCTING
@@ -160,7 +177,7 @@ export const MachineReconstructionScene: React.FC<MachineReconstructionSceneProp
       logTimers.forEach(clearTimeout);
       visualTimers.forEach(clearTimeout);
     };
-  }, [machineDNA, resolvedEnding]);
+  }, []);
 
   const handleProceedToDossier = () => {
     sound.playClick(1400);
@@ -196,7 +213,7 @@ export const MachineReconstructionScene: React.FC<MachineReconstructionSceneProp
       commentary: resolvedEnding.description,
     };
 
-    onReconstructionComplete(updated);
+    onReconstructionCompleteRef.current(updated);
   };
 
   return (
@@ -221,9 +238,7 @@ export const MachineReconstructionScene: React.FC<MachineReconstructionSceneProp
                 ? 'text-rose-400 animate-pulse'
                 : resolvedEnding.type === 'ANOMALY'
                   ? 'text-amber-400'
-                  : resolvedEnding.type === 'MACHINE'
-                    ? 'text-cyan-400'
-                    : 'text-emerald-400'
+                  : 'text-emerald-400'
             }`}
           >
             {stage === 'COMPLETE_REVEAL' ? resolvedEnding.title : 'RECONSTRUCTING...'}
@@ -380,7 +395,7 @@ export const MachineReconstructionScene: React.FC<MachineReconstructionSceneProp
 
       {/* Footer Info */}
       <div className="border-t border-neutral-800/80 pt-3 text-center text-xs text-neutral-600">
-        Constructed deterministically from in-memory interaction data. Zero face images stored.
+        Constructed deterministically from in-memory behavioral kinematics. Zero biometric images stored.
       </div>
     </div>
   );

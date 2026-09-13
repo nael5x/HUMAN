@@ -1,4 +1,4 @@
-import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
+import type { FaceLandmarker } from '@mediapipe/tasks-vision';
 
 export interface FacePoint {
   x: number;
@@ -28,11 +28,20 @@ export class FaceTracker {
   private initPromise: Promise<void> | null = null;
   private lastVideoTime = -1;
 
+  static async preload(): Promise<void> {
+    try {
+      await import('@mediapipe/tasks-vision');
+    } catch {
+      // Best-effort prefetch
+    }
+  }
+
   async initialize(): Promise<void> {
     if (this.landmarker) return;
     if (this.initPromise) return this.initPromise;
 
     this.initPromise = (async () => {
+      const { FaceLandmarker: FaceLandmarkerClass, FilesetResolver } = await import('@mediapipe/tasks-vision');
       const vision = await FilesetResolver.forVisionTasks(WASM_ROOT);
       const sharedOptions = {
         runningMode: 'VIDEO' as const,
@@ -44,7 +53,7 @@ export class FaceTracker {
       };
 
       try {
-        this.landmarker = await FaceLandmarker.createFromOptions(vision, {
+        this.landmarker = await FaceLandmarkerClass.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath: MODEL_URL,
             delegate: 'GPU',
@@ -55,7 +64,7 @@ export class FaceTracker {
         // Some mobile/Safari/WebGL combinations reject the GPU delegate even though
         // the local model can still run acceptably on CPU/WASM. Fall back before
         // degrading the experience to the synthetic mode.
-        this.landmarker = await FaceLandmarker.createFromOptions(vision, {
+        this.landmarker = await FaceLandmarkerClass.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath: MODEL_URL,
           },

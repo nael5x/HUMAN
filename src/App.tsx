@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { SceneState, SessionData, MotorMetrics } from './types';
 import { createInitialSession, computeFinalScores } from './scoring/ScoreEngine';
 import { sound } from './audio/AudioEngine';
@@ -26,11 +26,37 @@ import { PredictionScene } from './scenes/PredictionScene';
 import { BehaviorRevealScene } from './scenes/BehaviorRevealScene';
 import { AnalysisScene } from './scenes/AnalysisScene';
 import { CameraPermissionScene } from './scenes/CameraPermissionScene';
-import { FaceTrainingScene } from './scenes/FaceTrainingScene';
-import { MirrorScene } from './scenes/MirrorScene';
 import { TwistScene } from './scenes/TwistScene';
-import { MachineReconstructionScene } from './scenes/MachineReconstructionScene';
-import { ResultScene } from './scenes/ResultScene';
+
+// Heavy late-stage scenes loaded asynchronously to keep initial landing bundle light
+const FaceTrainingScene = React.lazy(() =>
+  import('./scenes/FaceTrainingScene').then((m) => ({ default: m.FaceTrainingScene })),
+);
+const MirrorScene = React.lazy(() =>
+  import('./scenes/MirrorScene').then((m) => ({ default: m.MirrorScene })),
+);
+const MachineReconstructionScene = React.lazy(() =>
+  import('./scenes/MachineReconstructionScene').then((m) => ({
+    default: m.MachineReconstructionScene,
+  })),
+);
+const ResultScene = React.lazy(() =>
+  import('./scenes/ResultScene').then((m) => ({ default: m.ResultScene })),
+);
+
+// Cinematic in-world fallback matching dark CRT / terminal aesthetic without layout shift
+const SceneSuspenseFallback: React.FC = () => (
+  <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#020306] text-neutral-400 font-mono select-none">
+    <div className="space-y-3 text-center animate-pulse">
+      <div className="text-[11px] tracking-[0.3em] text-neutral-500 uppercase">
+        SYSTEM BUFFER // MOUNTING SUBSYSTEM
+      </div>
+      <div className="text-sm font-bold text-neutral-300 tracking-widest uppercase">
+        SYNCHRONIZING ENVIRONMENT...
+      </div>
+    </div>
+  </div>
+);
 
 export default function App() {
   const [currentScene, setCurrentScene] = useState<SceneState>('LANDING');
@@ -41,18 +67,10 @@ export default function App() {
   const [isPrivacyOpen, setIsPrivacyOpen] = useState<boolean>(false);
   const [infoTab, setInfoTab] = useState<'privacy' | 'about'>('privacy');
   const glitchTimerRef = useRef<number | null>(null);
-  const currentSceneRef = useRef<SceneState>('LANDING');
 
-  useEffect(() => {
-    currentSceneRef.current = currentScene;
-  }, [currentScene]);
-
-  const goToScene = (next: SceneState) => {
-    currentSceneRef.current = next;
-    setCurrentScene(next);
-  };
-
-  const isCurrentScene = (expected: SceneState) => currentSceneRef.current === expected;
+  // Scene state ref to ensure callbacks are idempotent and guard against stale scene executions
+  const currentSceneRef = useRef<SceneState>(currentScene);
+  currentSceneRef.current = currentScene;
 
   // Sync hidden behaviors watcher with current scene
   useEffect(() => {
@@ -80,21 +98,22 @@ export default function App() {
     };
   }, []);
 
-  const triggerTemporaryGlitch = (level: 'minor' | 'medium' | 'critical', duration: number = 300) => {
+  const triggerTemporaryGlitch = useCallback((level: 'minor' | 'medium' | 'critical', duration: number = 300) => {
     if (glitchTimerRef.current !== null) window.clearTimeout(glitchTimerRef.current);
     setGlitchLevel(level);
     glitchTimerRef.current = window.setTimeout(() => {
       setGlitchLevel('none');
       glitchTimerRef.current = null;
     }, duration);
-  };
+  }, []);
 
-  const handleToggleMute = () => {
+  const handleToggleMute = useCallback(() => {
     const muted = sound.toggleMute();
     setIsMuted(muted);
-  };
+  }, []);
 
-  const handleRestart = () => {
+  const handleRestart = useCallback(() => {
+    currentSceneRef.current = 'LANDING';
     if (glitchTimerRef.current !== null) {
       window.clearTimeout(glitchTimerRef.current);
       glitchTimerRef.current = null;
@@ -109,27 +128,27 @@ export default function App() {
     const newSession = createInitialSession();
     setSession(newSession);
     setGlitchLevel('none');
-    goToScene('LANDING');
-  };
+    setCurrentScene('LANDING');
+  }, []);
 
   // 1. Landing -> Boot
-  const handleStartLanding = () => {
-    if (!isCurrentScene('LANDING')) return;
+  const handleStartLanding = useCallback(() => {
+    if (currentSceneRef.current !== 'LANDING') return;
     director.setNarrativeState('NORMAL', 0.08);
     triggerTemporaryGlitch('minor', 150);
-    goToScene('BOOT');
-  };
+    setCurrentScene('BOOT');
+  }, [triggerTemporaryGlitch]);
 
   // 2. Boot -> Motor Test
-  const handleBootComplete = () => {
-    if (!isCurrentScene('BOOT')) return;
+  const handleBootComplete = useCallback(() => {
+    if (currentSceneRef.current !== 'BOOT') return;
     director.setNarrativeState('OBSERVING', 0.22);
-    goToScene('MOTOR_TEST');
-  };
+    setCurrentScene('MOTOR_TEST');
+  }, []);
 
   // 3. Motor Test -> Instinct Test
-  const handleMotorComplete = (metrics: MotorMetrics) => {
-    if (!isCurrentScene('MOTOR_TEST')) return;
+  const handleMotorComplete = useCallback((metrics: MotorMetrics) => {
+    if (currentSceneRef.current !== 'MOTOR_TEST') return;
     setSession((prev) => ({
       ...prev,
       motor: metrics,
@@ -138,12 +157,12 @@ export default function App() {
       motorScore: metrics.score,
     }));
     triggerTemporaryGlitch('minor', 200);
-    goToScene('INSTINCT_TEST');
-  };
+    setCurrentScene('INSTINCT_TEST');
+  }, [triggerTemporaryGlitch]);
 
   // 4. Instinct Test -> Obedience Test
-  const handleInstinctComplete = (choice: number, reactionMs: number, switches: number) => {
-    if (!isCurrentScene('INSTINCT_TEST')) return;
+  const handleInstinctComplete = useCallback((choice: number, reactionMs: number, switches: number) => {
+    if (currentSceneRef.current !== 'INSTINCT_TEST') return;
     const instinctScore = Math.max(50, Math.min(98, 95 - Math.floor(reactionMs / 100)));
     setSession((prev) => ({
       ...prev,
@@ -159,12 +178,12 @@ export default function App() {
       instinctScore,
     }));
     triggerTemporaryGlitch('minor', 200);
-    goToScene('OBEDIENCE_TEST');
-  };
+    setCurrentScene('OBEDIENCE_TEST');
+  }, [triggerTemporaryGlitch]);
 
   // 5. Obedience Test -> Decision Test
-  const handleObedienceComplete = (moved: boolean, delta: number) => {
-    if (!isCurrentScene('OBEDIENCE_TEST')) return;
+  const handleObedienceComplete = useCallback((moved: boolean, delta: number) => {
+    if (currentSceneRef.current !== 'OBEDIENCE_TEST') return;
     const obedienceScore = moved ? 32 : 85;
     setSession((prev) => ({
       ...prev,
@@ -179,16 +198,16 @@ export default function App() {
       obedienceScore,
     }));
     triggerTemporaryGlitch('minor', 250);
-    goToScene('DECISION_TEST');
-  };
+    setCurrentScene('DECISION_TEST');
+  }, [triggerTemporaryGlitch]);
 
   // 6. Decision Test -> Memory Test (Milestone 1 Upgrade)
-  const handleDecisionComplete = (
+  const handleDecisionComplete = useCallback((
     choice: 'HELP' | 'ASK' | 'IGNORE' | 'LEAVE',
     latencyMs: number,
     switches: number
   ) => {
-    if (!isCurrentScene('DECISION_TEST')) return;
+    if (currentSceneRef.current !== 'DECISION_TEST') return;
     const decisionScore = Math.max(45, Math.min(95, 92 - Math.floor(latencyMs / 80)));
     setSession((prev) => ({
       ...prev,
@@ -204,47 +223,47 @@ export default function App() {
       decisionScore,
     }));
     triggerTemporaryGlitch('minor', 200);
-    goToScene('MEMORY_TEST');
-  };
+    setCurrentScene('MEMORY_TEST');
+  }, [triggerTemporaryGlitch]);
 
   // 7. Memory Test -> Prediction Scene
-  const handleMemoryComplete = (_metrics: MemoryTestMetrics) => {
-    if (!isCurrentScene('MEMORY_TEST')) return;
+  const handleMemoryComplete = useCallback((_metrics: MemoryTestMetrics) => {
+    if (currentSceneRef.current !== 'MEMORY_TEST') return;
     director.setNarrativeState('PREDICTING', 0.45);
     triggerTemporaryGlitch('minor', 250);
-    goToScene('PREDICTION');
-  };
+    setCurrentScene('PREDICTION');
+  }, [triggerTemporaryGlitch]);
 
   // 8. Prediction Scene -> Behavior Reveal
-  const handlePredictionComplete = (metrics: PredictionMetrics) => {
-    if (!isCurrentScene('PREDICTION')) return;
+  const handlePredictionComplete = useCallback((metrics: PredictionMetrics) => {
+    if (currentSceneRef.current !== 'PREDICTION') return;
     setSession((prev) => ({
       ...prev,
       predictabilityScore: metrics.predictabilityScore,
     }));
     triggerTemporaryGlitch('medium', 350);
-    goToScene('BEHAVIOR_REVEAL');
-  };
+    setCurrentScene('BEHAVIOR_REVEAL');
+  }, [triggerTemporaryGlitch]);
 
   // 9. Behavior Reveal -> Fake Verification (Analysis Scene)
-  const handleBehaviorRevealComplete = () => {
-    if (!isCurrentScene('BEHAVIOR_REVEAL')) return;
+  const handleBehaviorRevealComplete = useCallback(() => {
+    if (currentSceneRef.current !== 'BEHAVIOR_REVEAL') return;
     setSession((prev) => computeFinalScores(prev));
     triggerTemporaryGlitch('minor', 200);
-    goToScene('ANALYSIS');
-  };
+    setCurrentScene('ANALYSIS');
+  }, [triggerTemporaryGlitch]);
 
   // 10. Analysis -> Camera Permission (Glitch interruption)
-  const handleGlitchTriggered = () => {
-    if (!isCurrentScene('ANALYSIS')) return;
+  const handleGlitchTriggered = useCallback(() => {
+    if (currentSceneRef.current !== 'ANALYSIS') return;
     director.setNarrativeState('LEARNING', 0.58);
     triggerTemporaryGlitch('medium', 800);
-    goToScene('CAMERA_PERMISSION');
-  };
+    setCurrentScene('CAMERA_PERMISSION');
+  }, [triggerTemporaryGlitch]);
 
   // 11. Camera Permission -> Face Training
-  const handleCameraGranted = () => {
-    if (!isCurrentScene('CAMERA_PERMISSION')) return;
+  const handleCameraGranted = useCallback(() => {
+    if (currentSceneRef.current !== 'CAMERA_PERMISSION') return;
     setSession((prev) => ({
       ...prev,
       cameraRequested: true,
@@ -252,11 +271,11 @@ export default function App() {
       cameraSimulated: false,
     }));
     triggerTemporaryGlitch('minor', 200);
-    goToScene('FACE_TRAINING');
-  };
+    setCurrentScene('FACE_TRAINING');
+  }, [triggerTemporaryGlitch]);
 
-  const handleSimulateCamera = () => {
-    if (!isCurrentScene('CAMERA_PERMISSION')) return;
+  const handleSimulateCamera = useCallback(() => {
+    if (currentSceneRef.current !== 'CAMERA_PERMISSION') return;
     setSession((prev) => ({
       ...prev,
       cameraRequested: true,
@@ -265,12 +284,12 @@ export default function App() {
       faceTrackingMode: 'simulated',
     }));
     triggerTemporaryGlitch('minor', 200);
-    goToScene('FACE_TRAINING');
-  };
+    setCurrentScene('FACE_TRAINING');
+  }, [triggerTemporaryGlitch]);
 
   // 12. Face Training -> Mirror
-  const handleTrainingComplete = (usedRealTracking: boolean) => {
-    if (!isCurrentScene('FACE_TRAINING')) return;
+  const handleTrainingComplete = useCallback((usedRealTracking: boolean) => {
+    if (currentSceneRef.current !== 'FACE_TRAINING') return;
     setSession((prev) => ({
       ...prev,
       trainingStepIndex: 5,
@@ -282,29 +301,43 @@ export default function App() {
           : 'fallback',
     }));
     triggerTemporaryGlitch('minor', 250);
-    goToScene('MIRROR');
-  };
+    setCurrentScene('MIRROR');
+  }, [triggerTemporaryGlitch]);
 
   // 13. Mirror -> Twist
-  const handleDesyncTriggered = () => {
-    if (!isCurrentScene('MIRROR')) return;
+  const handleDesyncTriggered = useCallback(() => {
+    if (currentSceneRef.current !== 'MIRROR') return;
     triggerTemporaryGlitch('critical', 400);
-    goToScene('TWIST');
-  };
+    setCurrentScene('TWIST');
+  }, [triggerTemporaryGlitch]);
 
   // 14. Twist -> Machine Reconstruction
-  const handleTwistComplete = () => {
-    if (!isCurrentScene('TWIST')) return;
+  const handleTwistComplete = useCallback(() => {
+    if (currentSceneRef.current !== 'TWIST') return;
     setSession((prev) => computeFinalScores(prev));
-    goToScene('RECONSTRUCTION');
-  };
+    setCurrentScene('RECONSTRUCTION');
+  }, []);
 
   // 15. Reconstruction -> Result
-  const handleReconstructionComplete = (updatedSession: SessionData) => {
-    if (!isCurrentScene('RECONSTRUCTION')) return;
+  const handleReconstructionComplete = useCallback((updatedSession: SessionData) => {
+    if (currentSceneRef.current !== 'RECONSTRUCTION') return;
     setSession(updatedSession);
-    goToScene('RESULT');
-  };
+    setCurrentScene('RESULT');
+  }, []);
+
+  const handleOpenPrivacy = useCallback(() => {
+    setInfoTab('privacy');
+    setIsPrivacyOpen(true);
+  }, []);
+
+  const handleOpenAbout = useCallback(() => {
+    setInfoTab('about');
+    setIsPrivacyOpen(true);
+  }, []);
+
+  const handleClosePrivacy = useCallback(() => {
+    setIsPrivacyOpen(false);
+  }, []);
 
   return (
     <ErrorBoundary>
@@ -322,17 +355,14 @@ export default function App() {
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
           onReset={handleRestart}
-          onOpenPrivacy={() => {
-            setInfoTab('privacy');
-            setIsPrivacyOpen(true);
-          }}
+          onOpenPrivacy={handleOpenPrivacy}
         />
 
         {/* Client-Side Privacy / About Modal */}
         <PrivacyModal
           isOpen={isPrivacyOpen}
           initialTab={infoTab}
-          onClose={() => setIsPrivacyOpen(false)}
+          onClose={handleClosePrivacy}
         />
 
         {/* Active Scene Routing */}
@@ -342,14 +372,8 @@ export default function App() {
               challenge={challenge}
               seed={session.seed}
               onStart={handleStartLanding}
-              onOpenPrivacy={() => {
-                setInfoTab('privacy');
-                setIsPrivacyOpen(true);
-              }}
-              onOpenAbout={() => {
-                setInfoTab('about');
-                setIsPrivacyOpen(true);
-              }}
+              onOpenPrivacy={handleOpenPrivacy}
+              onOpenAbout={handleOpenAbout}
             />
           )}
 
@@ -404,38 +428,40 @@ export default function App() {
             />
           )}
 
-          {currentScene === 'FACE_TRAINING' && (
-            <FaceTrainingScene
-              isSimulated={session.cameraSimulated}
-              onTrainingComplete={handleTrainingComplete}
-            />
-          )}
+          <React.Suspense fallback={<SceneSuspenseFallback />}>
+            {currentScene === 'FACE_TRAINING' && (
+              <FaceTrainingScene
+                isSimulated={session.cameraSimulated}
+                onTrainingComplete={handleTrainingComplete}
+              />
+            )}
 
-          {currentScene === 'MIRROR' && (
-            <MirrorScene
-              isSimulated={session.cameraSimulated}
-              onDesyncTriggered={handleDesyncTriggered}
-            />
-          )}
+            {currentScene === 'MIRROR' && (
+              <MirrorScene
+                isSimulated={session.cameraSimulated}
+                onDesyncTriggered={handleDesyncTriggered}
+              />
+            )}
 
-          {currentScene === 'TWIST' && (
-            <TwistScene onComplete={handleTwistComplete} />
-          )}
+            {currentScene === 'TWIST' && (
+              <TwistScene onComplete={handleTwistComplete} />
+            )}
 
-          {currentScene === 'RECONSTRUCTION' && (
-            <MachineReconstructionScene
-              session={session}
-              onReconstructionComplete={handleReconstructionComplete}
-            />
-          )}
+            {currentScene === 'RECONSTRUCTION' && (
+              <MachineReconstructionScene
+                session={session}
+                onReconstructionComplete={handleReconstructionComplete}
+              />
+            )}
 
-          {currentScene === 'RESULT' && (
-            <ResultScene
-              session={session}
-              challenge={challenge}
-              onRestart={handleRestart}
-            />
-          )}
+            {currentScene === 'RESULT' && (
+              <ResultScene
+                session={session}
+                challenge={challenge}
+                onRestart={handleRestart}
+              />
+            )}
+          </React.Suspense>
         </main>
       </div>
     </ErrorBoundary>

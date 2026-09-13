@@ -21,7 +21,6 @@ export interface MachineDNA {
   instructionResistance: number;
   memoryConfidence: number;
   faceTrainingCompletion: number;
-  realFaceTraining: boolean;
   behavioralStability: number;
 
   // Metadata
@@ -132,15 +131,12 @@ export function extractMachineDNA(session: SessionData): MachineDNA {
       )
     : 0.6;
 
-  // faceTrainingCompletion: only real MediaPipe completion can reach full imitation parity.
-  // Simulated/fallback paths remain valid narratively, but cannot unlock camera-dependent endings.
-  const realFaceTraining =
-    session.faceTrackingMode === 'real' && summary.trainingCompletion && summary.faceAcquired;
-  const faceTrainingCompletion = realFaceTraining
-    ? 1.0
-    : summary.trainingCompletion
-      ? 0.55
-      : 0.35;
+  // faceTrainingCompletion: real vs simulated vs completion flag
+  const faceTrainingCompletion = summary.trainingCompletion
+    ? summary.faceAcquired
+      ? 1.0
+      : 0.8
+    : 0.5;
 
   // behavioralStability: consistency across tests
   const behavioralStability = clamp01(
@@ -163,7 +159,6 @@ export function extractMachineDNA(session: SessionData): MachineDNA {
     instructionResistance: clamp01(instructionResistance),
     memoryConfidence: clamp01(memoryConfidence),
     faceTrainingCompletion: clamp01(faceTrainingCompletion),
-    realFaceTraining,
     behavioralStability: clamp01(behavioralStability),
     seed: session.seed,
     modelId: session.modelId || `H-X${(session.seed % 99) + 1}`,

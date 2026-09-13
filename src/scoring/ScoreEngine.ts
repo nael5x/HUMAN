@@ -137,13 +137,15 @@ export function computeFinalScores(session: SessionData): SessionData {
   // Humanity is a cinematic composite, but it is now predominantly derived from measured behavior.
   const cameraQuality =
     s.faceTrackingMode === 'real' ? 96 : s.cameraGranted ? 82 : s.cameraSimulated ? 72 : 68;
+  const predBonus = s.predictabilityScore ? (s.predictabilityScore - 60) * 0.08 : 0;
   const behavioralComposite =
-    motorScore * 0.34 +
-    instinct * 0.20 +
-    decision * 0.20 +
+    motorScore * 0.30 +
+    instinct * 0.18 +
+    decision * 0.18 +
     obedience * 0.10 +
-    cameraQuality * 0.16;
-  const microNoise = ((s.seed % 13) - 6) * 0.12;
+    cameraQuality * 0.16 +
+    (s.predictabilityScore ? s.predictabilityScore * 0.08 : 5);
+  const microNoise = ((s.seed % 13) - 6) * 0.12 + predBonus;
   const finalHumanity = Math.round(clamp(69 + behavioralComposite * 0.28 + microNoise, 74, 97.8) * 10) / 10;
 
   const roundedCuriosity = Math.round(curiosity);

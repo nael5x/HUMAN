@@ -13,17 +13,7 @@ export interface ChallengePayload {
   token?: string;
 }
 
-const ALLOWED_ENDINGS = ['VERIFIED', 'ANOMALY', 'MACHINE', 'REPLACED'] as const;
-const ALLOWED_CLASSES = [
-  'ADAPTIVE OBSERVER',
-  'NON-COMPLIANT UNIT',
-  'EMOTIONAL PROCESSOR',
-  'INSTINCTIVE MODEL',
-  'PASSIVE ANALYST',
-  'UNSTABLE EXPLORER',
-  'LOGICAL SUBJECT',
-  'CURIOUS ANOMALY',
-] as const;
+const ALLOWED_ENDINGS = ['VERIFIED', 'ANOMALY', 'MACHINE', 'REPLACED'];
 
 export class ChallengeProtocol {
   /**
@@ -70,8 +60,8 @@ export class ChallengeProtocol {
 
       // Validate Model ID: must start with H- or SUB- and contain only alphanumeric/hyphens
       const rawModel = String(parsed.m || '');
-      const modelRegex = /^(?:H-[A-Z0-9]{3,12}|SUB-[A-Z0-9]{3,12})$/;
-      if (!modelRegex.test(rawModel.toUpperCase())) return null;
+      const modelRegex = /^[A-Za-z0-9-_]{3,16}$/;
+      if (!modelRegex.test(rawModel)) return null;
 
       // Validate Humanity: number between 1.0 and 100.0
       const rawHumanity = Number(parsed.h);
@@ -79,16 +69,14 @@ export class ChallengeProtocol {
 
       // Validate Ending: must be in whitelist
       const rawEnding = String(parsed.e || '').toUpperCase();
-      if (!(ALLOWED_ENDINGS as readonly string[]).includes(rawEnding)) return null;
-      const ending = rawEnding;
+      const ending = ALLOWED_ENDINGS.includes(rawEnding) ? rawEnding : 'VERIFIED';
 
-      // Validate Class against known in-world classifications
-      const rawClass = String(parsed.c || '').trim().toUpperCase().slice(0, 32);
-      if (!(ALLOWED_CLASSES as readonly string[]).includes(rawClass)) return null;
-      const sanitizedClass = rawClass;
+      // Validate Class: alphanumeric + spaces only
+      const rawClass = String(parsed.c || '').slice(0, 32);
+      const sanitizedClass = rawClass.replace(/[^A-Za-z0-9- ]/g, '').trim() || 'UNKNOWN';
 
       return {
-        challengerModelId: rawModel.toUpperCase(),
+        challengerModelId: rawModel,
         challengerHumanity: Math.round(rawHumanity * 10) / 10,
         challengerEnding: ending,
         challengerClass: sanitizedClass,

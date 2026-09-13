@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { ShieldCheck, Info, X } from 'lucide-react';
 
 interface InfoModalProps {
@@ -9,10 +9,6 @@ interface InfoModalProps {
 
 export const PrivacyModal: React.FC<InfoModalProps> = ({ isOpen, initialTab = 'privacy', onClose }) => {
   const [activeTab, setActiveTab] = useState<'privacy' | 'about'>(initialTab);
-
-  useEffect(() => {
-    if (isOpen) setActiveTab(initialTab);
-  }, [initialTab, isOpen]);
 
   if (!isOpen) return null;
 

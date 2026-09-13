@@ -20,7 +20,7 @@ export const LandingScene: React.FC<LandingSceneProps> = ({
 }) => {
   const [phase, setPhase] = useState<number>(0);
   const userMem = userMemory.getMemory();
-  const isReturning = userMem.visitCount > 0;
+  const isReturning = userMem.visitCount > 1;
 
   // Determine optional returning subtitle based on seed
   const returningSubtext = (() => {

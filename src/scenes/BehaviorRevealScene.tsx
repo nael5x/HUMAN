@@ -36,7 +36,7 @@ export const BehaviorRevealScene: React.FC<BehaviorRevealSceneProps> = ({ onComp
       const realObservations = DynamicNarrative.getBehavioralObservations(summary, 2);
       setObservations(realObservations.filter(Boolean));
     } catch {
-      setObservations(['Movement trajectory matches expected session variance.']);
+      setObservations(['Kinematic trajectory matches biological variance.']);
     }
 
     let currentIndex = 0;

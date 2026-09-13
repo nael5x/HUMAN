@@ -16,30 +16,52 @@ export interface UserMemoryData {
 }
 
 const STORAGE_KEY = 'human_user_memory_v2';
+const LEGACY_STORAGE_KEY = 'human_user_memory';
 const AUDIO_PREF_KEY = 'human_audio_muted_pref';
 
 class UserMemoryManager {
   private memory: UserMemoryData;
+  private recordedSessions = new Set<string>();
 
   constructor() {
     this.memory = this.load();
   }
 
+  public reload(): UserMemoryData {
+    this.recordedSessions.clear();
+    this.memory = this.load();
+    return { ...this.memory };
+  }
+
   private load(): UserMemoryData {
-    if (typeof window === 'undefined') {
+    if (typeof localStorage === 'undefined') {
       return { visitCount: 0, lastVisitTimestamp: 0, secretsDiscovered: [] };
     }
 
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      let raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        // Check for legacy v1 migration
+        const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
+        if (legacyRaw) {
+          raw = legacyRaw;
+          // Clean legacy key
+          try {
+            localStorage.removeItem(LEGACY_STORAGE_KEY);
+          } catch {
+            // ignore
+          }
+        }
+      }
+
       if (!raw) {
         return { visitCount: 0, lastVisitTimestamp: 0, secretsDiscovered: [] };
       }
 
       const parsed = JSON.parse(raw);
       // Validate schema and types safely
-      return {
-        visitCount: typeof parsed.visitCount === 'number' && parsed.visitCount >= 0 ? Math.floor(parsed.visitCount) : 0,
+      const sanitized: UserMemoryData = {
+        visitCount: typeof parsed.visitCount === 'number' && parsed.visitCount >= 0 ? parsed.visitCount : 0,
         lastVisitTimestamp: typeof parsed.lastVisitTimestamp === 'number' ? parsed.lastVisitTimestamp : Date.now(),
         previousEnding: typeof parsed.previousEnding === 'string' ? parsed.previousEnding.slice(0, 20) : undefined,
         previousMachineClass: typeof parsed.previousMachineClass === 'string' ? parsed.previousMachineClass.slice(0, 40) : undefined,
@@ -49,13 +71,22 @@ class UserMemoryManager {
           ? parsed.secretsDiscovered.filter((s: unknown): s is string => typeof s === 'string').slice(0, 30)
           : [],
       };
+
+      // Persist migrated format
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+      } catch {
+        // ignore
+      }
+
+      return sanitized;
     } catch {
       return { visitCount: 0, lastVisitTimestamp: 0, secretsDiscovered: [] };
     }
   }
 
   private save(): void {
-    if (typeof window === 'undefined') return;
+    if (typeof localStorage === 'undefined') return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.memory));
     } catch {
@@ -71,6 +102,12 @@ class UserMemoryManager {
     this.memory.visitCount += 1;
     this.memory.lastVisitTimestamp = Date.now();
     this.save();
+  }
+
+  public recordVisitForSession(subjectId: string): void {
+    if (!subjectId || this.recordedSessions.has(subjectId)) return;
+    this.recordedSessions.add(subjectId);
+    this.incrementVisitCount();
   }
 
   public recordSessionCompletion(data: {

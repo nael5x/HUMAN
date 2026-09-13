@@ -1,3 +1,5 @@
+import { userMemory } from '../memory/UserMemory';
+
 /**
  * Clinical Web Audio synthesizer engine for HUMAN? experience.
  * Fully procedural without external file dependencies.
@@ -12,6 +14,10 @@ class SoundEngine {
   private isMuted: boolean = false;
   private isStarted: boolean = false;
   private ambienceTension: number = 0;
+
+  constructor() {
+    this.isMuted = userMemory.getAudioMutedPref();
+  }
 
   public init() {
     if (this.ctx) return;
@@ -35,6 +41,7 @@ class SoundEngine {
 
   public toggleMute(): boolean {
     this.isMuted = !this.isMuted;
+    userMemory.setAudioMutedPref(this.isMuted);
     if (this.masterGain && this.ctx) {
       this.masterGain.gain.setTargetAtTime(this.isMuted ? 0 : 0.75, this.ctx.currentTime, 0.05);
     }
@@ -43,6 +50,10 @@ class SoundEngine {
 
   public getMuted(): boolean {
     return this.isMuted;
+  }
+
+  public reset() {
+    this.stopAmbience(0.1);
   }
 
   public startAmbience() {

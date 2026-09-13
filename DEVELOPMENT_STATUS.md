@@ -23,7 +23,7 @@
 
 - **Milestone 3 Machine Reconstruction & Behavioral DNA Engine**:
   - **Behavioral DNA Model (`/src/dna/MachineDNA.ts`)**: Normalized [0.0, 1.0] behavioral profile derived from raw telemetry metrics (humanity, curiosity, obedience, instinct, decision speed, predictability, motor chaos, motor precision, hesitation, exploration, instruction resistance, memory confidence, and face training completion) powered by a deterministic seeded LCG random generator.
-  - **Centralized Ending Resolver (`/src/dna/EndingResolver.ts`)**: Evaluates real behavioral conditions and rarity gates to determine exactly 1 of 4 endings: `VERIFIED` (balanced modeled variance, narrative rarity ~56%), `ANOMALY` (high exploratory curiosity/resistance with volatile trajectory, narrative rarity ~18%), `MACHINE` (low hesitation, geometric kinematic linearity, narrative rarity ~24%), and the rare `REPLACED` ending (real-camera imitation path plus deterministic rarity gate, narrative rarity ~1.2%). Also produces 1–3 non-contradictory clinical commentary statements.
+  - **Centralized Ending Resolver (`/src/dna/EndingResolver.ts`)**: Evaluates real behavioral conditions and rarity gates to determine exactly 1 of 4 endings: `VERIFIED` (baseline normative variance, ~56%), `ANOMALY` (high exploratory curiosity/resistance with volatile trajectory, ~18%), `MACHINE` (low hesitation, geometric kinematic linearity, ~24%), and the rare `REPLACED` ending (complete facial imitation synthesis & dual-nucleus identity, ~1.2%). Also produces 1–3 non-contradictory clinical commentary statements.
   - **Machine Twin Procedural Organism (`/src/visuals/MachineTwinCanvas.tsx`)**: High-framerate abstract digital organism featuring 5 distinct generative assembly layers (Core nucleus, Structural geometric polygons, Signal network lines, Sensor satellite reticles, and Particle aura field). Deterministically responds to DNA dimensions, endings (emerald/white, amber/red, cold cyan, and phantom rose), quality tiers (desktop/tablet/mobile), `prefers-reduced-motion`, and subtle tactile pointer interaction.
   - **Machine Reconstruction Sequence (`/src/scenes/MachineReconstructionScene.tsx`)**: Post-twist transition moving through paced clinical stages: "RECONSTRUCTION SEQUENCE INITIALIZED" -> "SOURCE SUBJECT [ID]" -> "BUILDING MODEL..." -> stepped matrix compilation logs -> gradual 5-layer visual assembly -> "RECONSTRUCTION COMPLETE" model reveal.
   - **Result Identity V2 (`/src/scenes/ResultScene.tsx`)**: Updated classification dossier integrating the interactive procedural Machine Twin, ending rarity badges, rule-based commentary bullets, granular telemetry bars, and 1080x1920 Story Card export.
@@ -47,7 +47,7 @@
 - **Phase 7 (Decision Test)**: 4 ethical choices, reaction latency measurement, and dynamic rule-based narrative observations.
 - **Phase 8 (Dynamic System Messages)**: Implemented `DynamicNarrative.ts` generating contextual observations and archetype classifications without LLMs.
 - **Phase 9 (Score Engine)**: Refined composite scoring with bounded humanity range (74% - 98%), small seeded variation (±1.4%), and 8 distinct archetype classifications.
-- **Phase 10 (Fake Human Verification)**: Stepped behavioral probability calculation, first appearance of emerald green, and "COMPLETE SESSION" interaction.
+- **Phase 10 (Fake Human Verification)**: Stepped Bayesian calculation, first appearance of emerald green, and "COMPLETE SESSION" interaction.
 - **Phase 11 (Plot Twist Transition)**: Dramatic pause -> glitch -> "ADDITIONAL SAMPLE REQUIRED" -> "VISUAL TRAINING REQUIRED".
 - **Phase 12 (Camera System)**: Privacy disclosure ("Camera frames are processed locally on your device. No video is uploaded or stored"), HTTPS requirement check, and fallback button.
 - **Phase 13 & 14 (Face Tracking & Calibration)**: Neutral pose calibration, throttled inference (25 FPS), dynamic gesture checks (LOOK LEFT, LOOK RIGHT, SMILE, TILT YOUR HEAD, BLINK), and 8.5s timeout with fallback.
@@ -71,23 +71,3 @@
 
 ## KNOWN ISSUES
 - None detected. `npm run typecheck` and `npm run build` both pass with code 0.
-
----
-
-## FINAL FIX PASS — RELEASE CANDIDATE HARDENING
-
-Completed after the V2 milestone build:
-
-- Corrected first-visit / returning-subject counting so recognition cues cannot appear on a genuine first session.
-- Added guarded scene transitions and reusable scene timer cleanup to reduce stale async callbacks after restart/unmount.
-- Tightened challenge payload validation for model IDs, endings, classes, and numeric score ranges.
-- Restricted the rare `REPLACED` ending to sessions with real on-device face tracking rather than simulated/fallback training.
-- Fixed About/Privacy tab synchronization when reopening the information modal.
-- Enabled automatic Machine Twin mobile/tablet quality selection and real render-loop pausing while the tab is hidden.
-- Changed final anomaly count to current-session discoveries while still persisting lifetime discoveries separately.
-- Improved saved/share result cards with a deterministic Machine Twin representation, ending-specific accents, current host branding, and file sharing where supported.
-- Reframed fictional analytics language to avoid presenting heuristic or narrative metrics as scientific/global measurements.
-- Added Open Graph / Twitter preview metadata and a spoiler-free social preview image.
-- Restored mobile zoom accessibility and fixed small copy/color inconsistencies.
-- Removed stale Gemini/server capability metadata.
-- TypeScript/TSX syntax and semantic audit passed in the review environment using temporary dependency declarations. A full dependency-backed production build should still be run in the project’s normal local environment after `npm install`.

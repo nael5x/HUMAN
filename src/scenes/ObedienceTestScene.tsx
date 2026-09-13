@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useSceneTimers } from '../utils/useSceneTimers';
 import { sound } from '../audio/AudioEngine';
 import { sessionMemory } from '../memory/SessionMemory';
 
@@ -8,7 +7,6 @@ interface ObedienceTestSceneProps {
 }
 
 export const ObedienceTestScene: React.FC<ObedienceTestSceneProps> = ({ onComplete }) => {
-  const { setSceneTimeout, setSceneInterval } = useSceneTimers();
   const [countdown, setCountdown] = useState<number>(5);
   const [isMeasuring, setIsMeasuring] = useState<boolean>(true);
   const [hasMoved, setHasMoved] = useState<boolean>(false);
@@ -33,7 +31,7 @@ export const ObedienceTestScene: React.FC<ObedienceTestSceneProps> = ({ onComple
     setIsTouchDevice(touchCheck);
 
     // 5-second countdown
-    const interval = setSceneInterval(() => {
+    const interval = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(interval);
@@ -133,18 +131,18 @@ export const ObedienceTestScene: React.FC<ObedienceTestSceneProps> = ({ onComple
     setVerdictStage(1);
 
     // Stage 2: Narrative reaction ("I knew you would." vs "Interesting restraint.")
-    setSceneTimeout(() => {
+    setTimeout(() => {
       setVerdictStage(2);
       sound.playClick(600);
     }, 1400);
 
     // Stage 3: Ellipsis
-    setSceneTimeout(() => {
+    setTimeout(() => {
       setVerdictStage(3);
     }, 2500);
 
     // Stage 4: Suspicious vs Compliance logged
-    setSceneTimeout(() => {
+    setTimeout(() => {
       setVerdictStage(4);
       if (didMove) {
         sound.playWarningPulse();
@@ -154,7 +152,7 @@ export const ObedienceTestScene: React.FC<ObedienceTestSceneProps> = ({ onComple
     }, 3400);
 
     // Transition to next stage
-    setSceneTimeout(() => {
+    setTimeout(() => {
       onComplete(didMove, Math.round(totalDeltaRef.current));
     }, 4800);
   };

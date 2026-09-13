@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useSceneTimers } from '../utils/useSceneTimers';
 import { sound } from '../audio/AudioEngine';
 
 interface AnalysisSceneProps {
@@ -11,11 +10,26 @@ export const AnalysisScene: React.FC<AnalysisSceneProps> = ({
   humanityScore,
   onGlitchTriggered,
 }) => {
-  const { setSceneTimeout } = useSceneTimers();
   const [progress, setProgress] = useState<number>(0);
   const [isVerified, setIsVerified] = useState<boolean>(false);
   const [isInterrupted, setIsInterrupted] = useState<boolean>(false);
   const [interruptionStage, setInterruptionStage] = useState<number>(0);
+  const glitchTimersRef = useRef<NodeJS.Timeout[]>([]);
+
+  // Quietly preload FaceTrainingScene chunk and MediaPipe tasks-vision in the background
+  // Preloading code only; camera is never requested or started until the user explicitly clicks Enable Camera
+  useEffect(() => {
+    const prefetchAssets = async () => {
+      try {
+        import('./FaceTrainingScene');
+        const { FaceTracker } = await import('../tracking/FaceTracker');
+        FaceTracker.preload();
+      } catch {
+        // Best-effort prefetch
+      }
+    };
+    prefetchAssets();
+  }, []);
 
   useEffect(() => {
     sound.setAmbienceTension(0.28);
@@ -29,10 +43,10 @@ export const AnalysisScene: React.FC<AnalysisSceneProps> = ({
       { p: displayScore, delay: 3400 },
     ];
 
-    const timeouts: number[] = [];
+    const timeouts: NodeJS.Timeout[] = [];
 
     steps.forEach((step, idx) => {
-      const t = setSceneTimeout(() => {
+      const t = setTimeout(() => {
         setProgress(step.p);
         if (idx === steps.length - 1) {
           setIsVerified(true);
@@ -44,7 +58,11 @@ export const AnalysisScene: React.FC<AnalysisSceneProps> = ({
       timeouts.push(t);
     });
 
-    return () => timeouts.forEach((t) => clearTimeout(t));
+    return () => {
+      timeouts.forEach((t) => clearTimeout(t));
+      glitchTimersRef.current.forEach((t) => clearTimeout(t));
+      glitchTimersRef.current = [];
+    };
   }, [humanityScore]);
 
   const handleCompleteSession = () => {
@@ -54,28 +72,30 @@ export const AnalysisScene: React.FC<AnalysisSceneProps> = ({
     sound.setAmbienceTension(0.58);
 
     // Dramatic brief pause: do nothing for a moment
-    setSceneTimeout(() => {
+    const t1 = setTimeout(() => {
       setInterruptionStage(1); // "..."
     }, 1200);
 
-    setSceneTimeout(() => {
+    const t2 = setTimeout(() => {
       setInterruptionStage(2); // Minor glitch
       sound.playGlitch(0.25);
       sound.playWarningPulse();
     }, 2400);
 
-    setSceneTimeout(() => {
+    const t3 = setTimeout(() => {
       setInterruptionStage(3); // "ADDITIONAL SAMPLE REQUIRED"
       sound.playWarningPulse();
     }, 3600);
 
-    setSceneTimeout(() => {
+    const t4 = setTimeout(() => {
       setInterruptionStage(4); // "VISUAL TRAINING REQUIRED"
     }, 4600);
 
-    setSceneTimeout(() => {
+    const t5 = setTimeout(() => {
       onGlitchTriggered();
     }, 6200);
+
+    glitchTimersRef.current.push(t1, t2, t3, t4, t5);
   };
 
   return (
@@ -83,7 +103,7 @@ export const AnalysisScene: React.FC<AnalysisSceneProps> = ({
       {/* Top Header */}
       <div className="border-b border-neutral-800/80 pb-4">
         <div className="text-xs text-neutral-500 tracking-widest uppercase">EVALUATION SUMMARY // CORE ANALYSIS</div>
-        <div className="text-xs text-neutral-600 mt-0.5">BEHAVIORAL PROBABILITY MATRIX</div>
+        <div className="text-xs text-neutral-600 mt-0.5">BAYESIAN PROBABILITY MATRIX</div>
       </div>
 
       {/* Main Analysis Display */}
@@ -122,7 +142,7 @@ export const AnalysisScene: React.FC<AnalysisSceneProps> = ({
                     {humanityScore}% HUMAN
                   </h1>
                   <p className="text-neutral-400 font-mono text-sm tracking-widest uppercase">
-                    SESSION HUMANITY CONFIDENCE
+                    BIOLOGICAL HUMAN CONFIDENCE
                   </p>
                 </div>
 
@@ -171,7 +191,7 @@ export const AnalysisScene: React.FC<AnalysisSceneProps> = ({
       <div className="border-t border-neutral-800/80 pt-3 text-center text-xs text-neutral-600">
         {isInterrupted
           ? 'System exception logged. Disengaging verification protocol.'
-          : "Confidence score synthesized from this session's fictional H-model baseline."}
+          : 'Confidence score calibrated against global baseline H-norms.'}
       </div>
     </div>
   );

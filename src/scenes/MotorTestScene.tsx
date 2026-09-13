@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useSceneTimers } from '../utils/useSceneTimers';
 import { sound } from '../audio/AudioEngine';
 import { MotorMetrics } from '../types';
 import { PointerTracker } from '../tracking/PointerTracker';
@@ -11,7 +10,6 @@ interface MotorTestSceneProps {
 }
 
 export const MotorTestScene: React.FC<MotorTestSceneProps> = ({ onComplete }) => {
-  const { setSceneTimeout } = useSceneTimers();
   const [clickCount, setClickCount] = useState<number>(0);
   const [targetPos, setTargetPos] = useState<{ x: number; y: number }>({ x: 32, y: 42 });
   const [targetScale, setTargetScale] = useState<number>(1);
@@ -181,7 +179,7 @@ export const MotorTestScene: React.FC<MotorTestSceneProps> = ({ onComplete }) =>
     } else {
       setIsAccepted(true);
       sound.playAcceptedTick();
-      setSceneTimeout(() => {
+      setTimeout(() => {
         onComplete(aggregateMetrics);
       }, 1500);
     }
@@ -270,7 +268,7 @@ export const MotorTestScene: React.FC<MotorTestSceneProps> = ({ onComplete }) =>
               MOTOR SAMPLE ACCEPTED
             </div>
             <p className="text-xs text-neutral-500 font-mono tracking-wider">
-              Pattern contains natural correction variance.
+              Pattern matches biological neuromuscular irregularity.
             </p>
           </div>
         )}
@@ -278,7 +276,7 @@ export const MotorTestScene: React.FC<MotorTestSceneProps> = ({ onComplete }) =>
 
       {/* Footer Instructions */}
       <div className="border-t border-neutral-800/80 pt-3 text-center text-xs text-neutral-500 font-mono">
-        Acquiring pointer feedback and acceleration curve.
+        Acquiring neuromuscular feedback and pointer acceleration curve.
       </div>
     </div>
   );

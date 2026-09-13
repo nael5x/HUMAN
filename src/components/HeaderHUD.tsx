@@ -57,6 +57,9 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
       case 'INSTINCT_TEST': return 'SAMPLE_02 [INSTINCT]';
       case 'OBEDIENCE_TEST': return 'SAMPLE_03 [COMPLIANCE]';
       case 'DECISION_TEST': return 'SAMPLE_04 [DECISION]';
+      case 'MEMORY_TEST': return 'SAMPLE_05 [MEMORY]';
+      case 'PREDICTION': return 'TRIAL_06 [ANTICIPATION]';
+      case 'BEHAVIOR_REVEAL': return 'SYNTHESIS [MODEL]';
       case 'ANALYSIS':
       case 'VERIFIED': return 'EVALUATION';
       case 'CAMERA_PERMISSION':

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useSceneTimers } from '../utils/useSceneTimers';
 import { sound } from '../audio/AudioEngine';
 import { DynamicNarrative } from '../behavior/DynamicNarrative';
 import { sessionMemory } from '../memory/SessionMemory';
@@ -68,7 +67,6 @@ interface DecisionTestSceneProps {
 }
 
 export const DecisionTestScene: React.FC<DecisionTestSceneProps> = ({ seed = 0, onComplete }) => {
-  const { setSceneTimeout } = useSceneTimers();
   const scenarioIndex = Math.abs(seed) % SCENARIOS.length;
   const currentScenario = SCENARIOS[scenarioIndex];
 
@@ -107,17 +105,17 @@ export const DecisionTestScene: React.FC<DecisionTestSceneProps> = ({ seed = 0, 
 
     setFeedbackStage(1);
 
-    setSceneTimeout(() => {
+    setTimeout(() => {
       setFeedbackStage(2);
       sound.playScanPulse();
     }, 1200);
 
-    setSceneTimeout(() => {
+    setTimeout(() => {
       setFeedbackStage(3);
       sound.playAcceptedTick();
     }, 2400);
 
-    setSceneTimeout(() => {
+    setTimeout(() => {
       onComplete(choice, elapsed, switchesRef.current);
     }, 3900);
   };

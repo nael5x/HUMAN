@@ -18,7 +18,6 @@ export class EndingResolver {
     // - Plus deterministic rarity gate from session seed: (seed % 100) < 3 (~2.5% of sessions).
     const seedGate = Math.abs(dna.seed) % 100;
     const isReplacedCandidate =
-      dna.realFaceTraining &&
       dna.faceTrainingCompletion >= 0.8 &&
       dna.predictability >= 0.65 &&
       dna.humanity >= 0.76 &&
@@ -30,10 +29,10 @@ export class EndingResolver {
         title: 'ENDING // REPLACED',
         subtitle: 'REPLACEMENT SUCCESSFUL',
         description:
-          'Session-derived behavioral signatures and verified local imitation patterns have reached narrative synthesis. Original subject input is no longer required by the fictional system.',
+          'Subject behavioral signatures, cranial motor vectors, and ocular responses have reached complete synthesis. Original biological input is no longer required.',
         rarityPercentage: 1.2,
         reason:
-          'Real on-device face training and behavioral parity satisfied the rare narrative replacement gate.',
+          'High training completeness and behavioral parity satisfied the rare replacement threshold.',
       };
     }
 
@@ -49,10 +48,10 @@ export class EndingResolver {
         title: 'ENDING // ANOMALY',
         subtitle: 'BEHAVIOR REMAINS OUTSIDE STABLE PREDICTIVE BOUNDS',
         description:
-          'Subject exhibits volatile decision vectors, irregular movement paths, and persistent resistance to instructional cues. Model adaptation remains incomplete.',
+          'Subject exhibits volatile decision vectors, erratic kinetic trajectories, and persistent resistance to instructional cues. Model adaptation incomplete.',
         rarityPercentage: 18.4,
         reason:
-          "Exploratory curiosity and instruction resistance exceeded this session model's stability bounds.",
+          'Exploratory curiosity and instruction violation rates exceeded statistical baseline bounds.',
       };
     }
 
@@ -69,10 +68,10 @@ export class EndingResolver {
         title: 'ENDING // MACHINE',
         subtitle: 'ORGANIC VARIANCE BELOW EXPECTED RANGE',
         description:
-          'Subject response timing and movement paths show unusually regular patterns with very low hesitation in this fictional model.',
+          'Subject response times and kinetic paths conform to algorithmic regularity with near-zero hesitation. Biological noise profile absent.',
         rarityPercentage: 24.1,
         reason:
-          'Kinematic linearity and low decision hesitation produced unusually consistent session patterns.',
+          'Kinematic linearity and low decision hesitation exhibited artificial consistency.',
       };
     }
 
@@ -83,10 +82,10 @@ export class EndingResolver {
       title: 'ENDING // VERIFIED',
       subtitle: 'RECONSTRUCTION STABLE // HUMAN PARITY VERIFIED',
       description:
-        'Subject maintains balanced session variance, moderate deliberation, and stable interaction feedback. Parity established within the experience model.',
+        'Subject maintains expected biological variance, balanced moral hesitation, and normative neuromotor feedback curves. Parity established.',
       rarityPercentage: 56.3,
       reason:
-        "Decision timing and movement variation align with the experience's fictional human baseline.",
+        'Biometric decision delays and kinetic tremor align with normative human baseline ranges.',
     };
   }
 
@@ -129,12 +128,12 @@ export class EndingResolver {
     if (dna.motorChaos > 0.65) {
       comments.push('Movement profile displays significant correction noise.');
     } else if (dna.motorPrecision > 0.75) {
-      comments.push('Movement trajectories demonstrate controlled interaction stability.');
+      comments.push('Kinematic trajectories demonstrate controlled neuromuscular stability.');
     }
 
     // Return at least 1 and at most 3 non-contradictory statements
     if (comments.length === 0) {
-      comments.push("Movement trajectory matches the experience's expected human-like variance.");
+      comments.push('Kinematic trajectory matches biological variance.');
     }
 
     return comments.slice(0, 3);

@@ -16,19 +16,19 @@ export const BootScene: React.FC<BootSceneProps> = ({ subjectId, seed, challenge
   const [isDetected, setIsDetected] = useState<boolean>(false);
 
   useEffect(() => {
-    // Record visit in local memory
-    userMemory.incrementVisitCount();
+    // Record visit safely once per session in local memory
+    userMemory.recordVisitForSession(subjectId);
     const userMem = userMemory.getMemory();
     const isReturning = userMem.visitCount > 1;
 
-    const timeouts: ReturnType<typeof setTimeout>[] = [];
+    const timeouts: NodeJS.Timeout[] = [];
 
     // Trigger returning whisper if applicable
     if (isReturning) {
-      const returningWhisperTimer = setTimeout(() => {
+      const whisperTimer = setTimeout(() => {
         hiddenBehaviors.triggerReturningWhisper();
       }, 1500);
-      timeouts.push(returningWhisperTimer);
+      timeouts.push(whisperTimer);
     }
 
     // Build adaptive sequence based on returning history and challenge

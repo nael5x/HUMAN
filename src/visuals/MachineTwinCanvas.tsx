@@ -32,7 +32,7 @@ export const MachineTwinCanvas: React.FC<MachineTwinCanvasProps> = ({
   dna,
   ending,
   interactive = true,
-  qualityTier,
+  qualityTier = 'desktop',
   assemblyProgress = 1.0,
   className = '',
 }) => {
@@ -62,15 +62,15 @@ export const MachineTwinCanvas: React.FC<MachineTwinCanvasProps> = ({
 
     const handleVisibilityChange = () => {
       isTabVisible = !document.hidden;
-      cancelAnimationFrame(animId);
       if (isTabVisible && !cancelled) {
+        cancelAnimationFrame(animId);
         animId = requestAnimationFrame(render);
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Auto-detect tier if not explicitly specified
-    const detectedTier = qualityTier ?? (
+    const detectedTier = qualityTier || (
       typeof window !== 'undefined' && window.innerWidth < 640 ? 'mobile' :
       typeof window !== 'undefined' && window.innerWidth < 1024 ? 'tablet' : 'desktop'
     );
@@ -172,7 +172,7 @@ export const MachineTwinCanvas: React.FC<MachineTwinCanvasProps> = ({
     );
 
     const render = () => {
-      if (cancelled || !isTabVisible) return;
+      if (cancelled) return;
 
       const timeIncrement = prefersReducedMotion
         ? 0.004
@@ -382,14 +382,10 @@ export const MachineTwinCanvas: React.FC<MachineTwinCanvasProps> = ({
         }
       }
 
-      if (isTabVisible && !cancelled) {
-        animId = requestAnimationFrame(render);
-      }
+      animId = requestAnimationFrame(render);
     };
 
-    if (isTabVisible) {
-      animId = requestAnimationFrame(render);
-    }
+    animId = requestAnimationFrame(render);
 
     return () => {
       cancelled = true;

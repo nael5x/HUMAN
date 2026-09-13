@@ -27,8 +27,8 @@ export const PredictionScene: React.FC<PredictionSceneProps> = ({ onComplete }) 
   const secretPredictionRef = useRef<'LEFT' | 'RIGHT'>('LEFT');
   const changedMindRef = useRef<boolean>(false);
 
-  const advanceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const completeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const advanceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const completeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     director.setNarrativeState('PREDICTING', 0.45);
@@ -308,7 +308,7 @@ export const PredictionScene: React.FC<PredictionSceneProps> = ({ onComplete }) 
 
       {/* Footer Instructions */}
       <div className="border-t border-neutral-800/80 pt-3 text-center text-xs text-neutral-600">
-        Local rule-based projection of choice patterns. Variance is expected and recorded.
+        Continuous Bayesian modeling of user choice patterns. Variance is expected and recorded.
       </div>
     </div>
   );

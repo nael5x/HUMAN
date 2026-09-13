@@ -3,7 +3,7 @@ import { Download, Share2, RefreshCw, Check, Swords } from 'lucide-react';
 import { sound } from '../audio/AudioEngine';
 import { director } from '../director/ExperienceDirector';
 import { SessionData } from '../types';
-import { extractMachineDNA, MachineDNA, resolveMachineArchetype, SeededRandom } from '../dna/MachineDNA';
+import { extractMachineDNA, MachineDNA, resolveMachineArchetype } from '../dna/MachineDNA';
 import { EndingResolver } from '../dna/EndingResolver';
 import { MachineTwinCanvas } from '../visuals/MachineTwinCanvas';
 import { SecretResolver } from '../behavior/SecretRegistry';
@@ -21,7 +21,6 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, challenge, on
   const [isGeneratingImg, setIsGeneratingImg] = useState<boolean>(false);
   const [cardFormat, setCardFormat] = useState<'story' | 'square'>('story');
   const [revealPhase, setRevealPhase] = useState<number>(0);
-  const copiedTimerRef = useRef<number | null>(null);
 
   // Compute MachineDNA and Ending deterministically
   const machineDNA: MachineDNA = useMemo(() => extractMachineDNA(session), [session]);
@@ -43,7 +42,9 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, challenge, on
         ? 'CONTROLLED'
         : 'ADAPTIVE';
 
-  const anomaliesDiscovered = useMemo(() => SecretResolver.getDiscoveredCount(), []);
+  const anomaliesDiscovered = useMemo(() => {
+    return Math.max(SecretResolver.getDiscoveredCount(), userMemory.getMemory().secretsDiscovered.length);
+  }, []);
 
   useEffect(() => {
     director.setNarrativeState('RESULT', 0.12);
@@ -69,10 +70,6 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, challenge, on
       clearTimeout(t2);
       clearTimeout(t3);
       clearTimeout(t4);
-      if (copiedTimerRef.current !== null) {
-        window.clearTimeout(copiedTimerRef.current);
-        copiedTimerRef.current = null;
-      }
     };
   }, [classification, ending.type, humanity, modelId]);
 
@@ -92,40 +89,23 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, challenge, on
 
     if (navigator.share) {
       try {
-        const exportCanvas = await renderCardCanvas(cardFormat === 'square');
-        const blob = await new Promise<Blob | null>((resolve) => exportCanvas.toBlob(resolve, 'image/png'));
-        const file = blob ? new File([blob], `HUMAN_${modelId}_${cardFormat}.png`, { type: 'image/png' }) : null;
-
-        if (file && navigator.canShare?.({ files: [file] })) {
-          await navigator.share({
-            title: `HUMAN? — Model ${modelId}`,
-            text: shareText,
-            url: challengeUrl,
-            files: [file],
-          });
-        } else {
-          await navigator.share({
-            title: `HUMAN? — Model ${modelId}`,
-            text: shareText,
-            url: challengeUrl,
-          });
-        }
+        await navigator.share({
+          title: `HUMAN? — Model ${modelId}`,
+          text: shareText,
+          url: challengeUrl,
+        });
         return;
       } catch {
-        // User cancellation or unsupported file sharing falls through to clipboard.
+        // user cancelled or fallback
       }
     }
 
     try {
       await navigator.clipboard.writeText(`${shareText}\n${challengeUrl}`);
       setCopied(true);
-      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
-      copiedTimerRef.current = window.setTimeout(() => {
-        setCopied(false);
-        copiedTimerRef.current = null;
-      }, 2500);
+      setTimeout(() => setCopied(false), 2500);
     } catch {
-      // Clipboard may be unavailable in restrictive browser contexts.
+      // ignore
     }
   };
 
@@ -153,9 +133,7 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, challenge, on
         ? 'rgba(244, 63, 94, 0.08)'
         : ending.type === 'ANOMALY'
           ? 'rgba(245, 158, 11, 0.08)'
-          : ending.type === 'MACHINE'
-            ? 'rgba(56, 189, 248, 0.08)'
-            : 'rgba(16, 185, 129, 0.08)';
+          : 'rgba(16, 185, 129, 0.08)';
 
     const grad = ctx.createRadialGradient(width / 2, height * 0.45, 50, width / 2, height * 0.45, width * 0.7);
     grad.addColorStop(0, auraColor);
@@ -195,20 +173,14 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, challenge, on
 
     // Ending Banner
     const accentColor =
-      ending.type === 'REPLACED'
-        ? '#f43f5e'
-        : ending.type === 'ANOMALY'
-          ? '#f59e0b'
-          : ending.type === 'MACHINE'
-            ? '#38bdf8'
-            : '#10b981';
+      ending.type === 'REPLACED' ? '#f43f5e' : ending.type === 'ANOMALY' ? '#f59e0b' : '#10b981';
     ctx.fillStyle = accentColor;
     ctx.font = 'bold 30px "JetBrains Mono", monospace';
     ctx.fillText(ending.title, 80, topPadding + 130);
 
     ctx.fillStyle = '#a1a1aa';
     ctx.font = '20px "JetBrains Mono", monospace';
-    ctx.fillText(`NARRATIVE RARITY // ${ending.rarityPercentage}%`, 80, topPadding + 165);
+    ctx.fillText(`DISCOVERED IN ${ending.rarityPercentage}% OF SUBJECTS`, 80, topPadding + 165);
 
     // Model & Class
     ctx.fillStyle = '#71717a';
@@ -227,75 +199,27 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, challenge, on
     ctx.font = 'bold 40px "JetBrains Mono", monospace';
     ctx.fillText(classification, 80, topPadding + 390);
 
-    // Deterministic Machine Twin snapshot derived from the same MachineDNA.
+    // Center Organism Visual
     const cx = isSquare ? 820 : 540;
-    const cy = isSquare ? topPadding + 245 : topPadding + 620;
-    const organismRadius = isSquare ? 138 : 178;
-    const rng = new SeededRandom(machineDNA.seed);
+    const cy = isSquare ? topPadding + 240 : topPadding + 620;
+    const organismRadius = isSquare ? 140 : 180;
 
-    const aura = ctx.createRadialGradient(cx, cy, 8, cx, cy, organismRadius * 1.45);
-    aura.addColorStop(0, `${accentColor}33`);
-    aura.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = aura;
-    ctx.beginPath();
-    ctx.arc(cx, cy, organismRadius * 1.45, 0, Math.PI * 2);
-    ctx.fill();
-
-    const layers = 5 + Math.round(machineDNA.predictability * 3);
-    for (let layer = 0; layer < layers; layer++) {
-      const points = 10 + layer * 3;
-      const radius = 42 + layer * (organismRadius - 42) / Math.max(1, layers - 1);
-      const asymmetry = (1 - machineDNA.obedience) * 16;
-      ctx.beginPath();
-      for (let i = 0; i <= points; i++) {
-        const angle = (i / points) * Math.PI * 2;
-        const harmonic = Math.sin(angle * (3 + (layer % 3)) + machineDNA.seed * 0.001 + layer) *
-          (3 + machineDNA.motorChaos * 10);
-        const jitter = (rng.next() - 0.5) * asymmetry;
-        const rr = radius + harmonic + jitter;
-        const px = cx + Math.cos(angle) * rr;
-        const py = cy + Math.sin(angle) * rr;
-        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-      }
-      ctx.closePath();
-      ctx.strokeStyle = layer === layers - 1 ? accentColor : `rgba(228,228,231,${0.12 + layer * 0.07})`;
-      ctx.lineWidth = layer === layers - 1 ? 2.2 : 1;
-      ctx.stroke();
-    }
-
-    const sensors = 3 + Math.round(machineDNA.curiosity * 7);
-    for (let i = 0; i < sensors; i++) {
-      const angle = (i / sensors) * Math.PI * 2 + rng.range(-0.18, 0.18);
-      const orbit = organismRadius * rng.range(0.72, 1.18);
-      const sx = cx + Math.cos(angle) * orbit;
-      const sy = cy + Math.sin(angle) * orbit;
-      ctx.fillStyle = accentColor;
-      ctx.beginPath();
-      ctx.arc(sx, sy, 3 + machineDNA.exploration * 2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = `${accentColor}55`;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(sx, sy);
-      ctx.stroke();
-    }
-
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(cx, cy, 12 + machineDNA.humanity * 9, 0, Math.PI * 2);
-    ctx.fill();
     ctx.strokeStyle = accentColor;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(cx, cy, 24 + machineDNA.instinct * 12, 0, Math.PI * 2);
+    ctx.arc(cx, cy, organismRadius, 0, Math.PI * 2);
     ctx.stroke();
 
-    if (ending.type === 'REPLACED') {
-      ctx.fillStyle = '#f43f5e';
+    for (let r = 1; r <= 5; r++) {
+      ctx.strokeStyle = `rgba(255, 255, 255, ${0.12 + r * 0.08})`;
       ctx.beginPath();
-      ctx.arc(cx + 15, cy - 10, 8, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.arc(cx, cy, 24 + r * (organismRadius / 5), 0, Math.PI * 2);
+      ctx.stroke();
     }
+    ctx.fillStyle = accentColor;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 14, 0, Math.PI * 2);
+    ctx.fill();
 
     // Stats Section
     let statsY = isSquare ? topPadding + 470 : topPadding + 910;
@@ -333,10 +257,9 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, challenge, on
     ctx.font = 'bold 28px Syne, sans-serif';
     ctx.fillText('YOU WERE HUMAN. I JUST NEEDED TO LEARN HOW.', 80, footerY - 15);
 
-    const shareHost = typeof window !== 'undefined' ? window.location.host : 'HUMAN?';
     ctx.fillStyle = '#52525b';
     ctx.font = '18px "JetBrains Mono", monospace';
-    ctx.fillText(`PROVE YOU ARE HUMAN // ${shareHost}`, 80, footerY + 20);
+    ctx.fillText('PROVE YOU ARE HUMAN // human.app', 80, footerY + 20);
 
     return canvas;
   };
@@ -389,9 +312,7 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, challenge, on
                 ? 'bg-rose-400'
                 : ending.type === 'ANOMALY'
                   ? 'bg-amber-400'
-                  : ending.type === 'MACHINE'
-                    ? 'bg-cyan-400'
-                    : 'bg-emerald-400'
+                  : 'bg-emerald-400'
             }`}
           />
           <span
@@ -400,9 +321,7 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, challenge, on
                 ? 'text-rose-400'
                 : ending.type === 'ANOMALY'
                   ? 'text-amber-400'
-                  : ending.type === 'MACHINE'
-                    ? 'text-cyan-400'
-                    : 'text-emerald-400'
+                  : 'text-emerald-400'
             }`}
           >
             {ending.title}
@@ -427,16 +346,14 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, challenge, on
                     ? 'text-rose-400'
                     : ending.type === 'ANOMALY'
                       ? 'text-amber-400'
-                      : ending.type === 'MACHINE'
-                        ? 'text-cyan-400'
-                        : 'text-emerald-400'
+                      : 'text-emerald-400'
                 }`}
               >
                 {ending.type}
               </span>
             </div>
             <div className="text-[11px] font-mono text-neutral-400">
-              NARRATIVE RARITY // {ending.rarityPercentage}%
+              {ending.rarityPercentage}% OF SUBJECTS
             </div>
           </div>
 
@@ -455,15 +372,7 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, challenge, on
                 {modelId}
               </div>
               <div className="text-xs text-neutral-500 tracking-widest uppercase pt-2">CLASS</div>
-              <div className={`text-base sm:text-lg font-bold font-mono tracking-wide ${
-                  ending.type === 'REPLACED'
-                    ? 'text-rose-400'
-                    : ending.type === 'ANOMALY'
-                      ? 'text-amber-400'
-                      : ending.type === 'MACHINE'
-                        ? 'text-cyan-400'
-                        : 'text-emerald-400'
-                }`}>
+              <div className="text-base sm:text-lg font-bold text-emerald-400 font-mono tracking-wide">
                 {classification}
               </div>
               <div className="text-xs text-neutral-500 tracking-widest uppercase pt-1">
@@ -510,10 +419,10 @@ export const ResultScene: React.FC<ResultSceneProps> = ({ session, challenge, on
               </div>
               <div className="text-[11px] text-neutral-400 italic">
                 {humanity > challenge.challengerHumanity
-                  ? 'Your session score surpassed the challenger.'
+                  ? 'Your organic variance surpassed the challenger.'
                   : humanity === challenge.challengerHumanity
-                    ? 'Identical session score recorded.'
-                    : 'The challenger recorded a higher session score.'}
+                    ? 'Identical organic variance recorded.'
+                    : 'The challenger demonstrated greater biological variation.'}
               </div>
             </div>
           )}

@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useSceneTimers } from '../utils/useSceneTimers';
 import { sound } from '../audio/AudioEngine';
 import { camera } from '../tracking/CameraManager';
 import { FaceTracker, type FaceSignals } from '../tracking/FaceTracker';
@@ -30,7 +29,6 @@ export const FaceTrainingScene: React.FC<FaceTrainingSceneProps> = ({
   isSimulated,
   onTrainingComplete,
 }) => {
-  const { setSceneTimeout } = useSceneTimers();
   const [phase, setPhase] = useState<Phase>(isSimulated ? 'acquiring' : 'loading');
   const [acquisitionStep, setAcquisitionStep] = useState(0);
   const [currentPromptIndex, setCurrentPromptIndex] = useState(0);
@@ -144,7 +142,7 @@ export const FaceTrainingScene: React.FC<FaceTrainingSceneProps> = ({
       sound.playAcceptedTick();
     }
 
-    setSceneTimeout(() => {
+    window.setTimeout(() => {
       setPatternLearnedFlash(false);
       if (index + 1 < trainingSteps.length) {
         setCurrentPromptIndex(index + 1);
@@ -157,12 +155,12 @@ export const FaceTrainingScene: React.FC<FaceTrainingSceneProps> = ({
 
         // Restrained psychological pacing:
         // First show "TRAINING COMPLETE", then transition to "I think I have enough."
-        setSceneTimeout(() => {
+        window.setTimeout(() => {
           setCompletionPhrase(true);
           sound.playClick(600);
         }, 1400);
 
-        setSceneTimeout(() => {
+        window.setTimeout(() => {
           onTrainingComplete(!isSimulated && !trackerError);
         }, 3400);
       }
@@ -229,6 +227,7 @@ export const FaceTrainingScene: React.FC<FaceTrainingSceneProps> = ({
   // Camera + MediaPipe initialization
   useEffect(() => {
     let cancelled = false;
+    let initTimeoutId: number | null = null;
 
     if (isSimulated) return;
 
@@ -241,15 +240,24 @@ export const FaceTrainingScene: React.FC<FaceTrainingSceneProps> = ({
         trackerRef.current = tracker;
         await Promise.race([
           tracker.initialize(),
-          new Promise<never>((_, reject) =>
-            setSceneTimeout(() => reject(new Error('Local face model initialization timed out.')), 10000),
-          ),
-        ]);
+          new Promise<never>((_, reject) => {
+            initTimeoutId = window.setTimeout(
+              () => reject(new Error('Local face model initialization timed out.')),
+              10000,
+            );
+          }),
+        ]).finally(() => {
+          if (initTimeoutId !== null) {
+            window.clearTimeout(initTimeoutId);
+            initTimeoutId = null;
+          }
+        });
         if (!cancelled) setPhase('acquiring');
       } catch (error) {
         if (cancelled) return;
         const message = error instanceof Error ? error.message : 'Face tracking unavailable.';
         setTrackerError(message);
+        camera.stop();
         setPhase('acquiring');
       }
     };
@@ -258,6 +266,10 @@ export const FaceTrainingScene: React.FC<FaceTrainingSceneProps> = ({
 
     return () => {
       cancelled = true;
+      if (initTimeoutId !== null) {
+        window.clearTimeout(initTimeoutId);
+        initTimeoutId = null;
+      }
       trackerRef.current?.close();
       trackerRef.current = null;
     };
@@ -269,12 +281,12 @@ export const FaceTrainingScene: React.FC<FaceTrainingSceneProps> = ({
 
     if (phase === 'acquiring') {
       const timers = [
-        setSceneTimeout(() => setAcquisitionStep(1), 500),
-        setSceneTimeout(() => setAcquisitionStep(2), 1100),
-        setSceneTimeout(() => setAcquisitionStep(3), 1700),
-        setSceneTimeout(() => setAcquisitionStep(4), 2300),
-        setSceneTimeout(() => {
-          sessionMemory.recordFaceAcquired(false);
+        window.setTimeout(() => setAcquisitionStep(1), 500),
+        window.setTimeout(() => setAcquisitionStep(2), 1100),
+        window.setTimeout(() => setAcquisitionStep(3), 1700),
+        window.setTimeout(() => setAcquisitionStep(4), 2300),
+        window.setTimeout(() => {
+          sessionMemory.recordFaceAcquired(true);
           setPhase('training');
         }, 2900),
       ];
@@ -282,7 +294,7 @@ export const FaceTrainingScene: React.FC<FaceTrainingSceneProps> = ({
     }
 
     if (phase === 'training') {
-      const timer = setSceneTimeout(() => finishCurrentStep(false), 2100);
+      const timer = window.setTimeout(() => finishCurrentStep(false), 2100);
       return () => window.clearTimeout(timer);
     }
   }, [isSimulated, trackerError, phase, currentPromptIndex]);
@@ -290,7 +302,7 @@ export const FaceTrainingScene: React.FC<FaceTrainingSceneProps> = ({
   // Per-gesture timeout (8 seconds)
   useEffect(() => {
     if (phase !== 'training' || isSimulated || trackerError) return;
-    const timer = setSceneTimeout(() => {
+    const timer = window.setTimeout(() => {
       setAttemptTimeout(true);
     }, GESTURE_TIMEOUT_MS);
     return () => window.clearTimeout(timer);
@@ -307,7 +319,7 @@ export const FaceTrainingScene: React.FC<FaceTrainingSceneProps> = ({
   // If face acquisition stalls, fall back smoothly
   useEffect(() => {
     if (phase !== 'acquiring' || isSimulated || trackerError) return;
-    const timer = setSceneTimeout(() => {
+    const timer = window.setTimeout(() => {
       setTrackerError('Stable face acquisition timed out.');
       signalsRef.current = null;
       baselineAccumulatorRef.current = { yaw: 0, roll: 0, smile: 0, blink: 0, count: 0 };
@@ -315,11 +327,22 @@ export const FaceTrainingScene: React.FC<FaceTrainingSceneProps> = ({
     return () => window.clearTimeout(timer);
   }, [phase, isSimulated, trackerError]);
 
-  // Camera canvas + detection loop (Throttled to 25 FPS)
+  // Camera canvas + detection loop (Throttled to 25 FPS inference, 5 FPS telemetry state updates)
   useEffect(() => {
     let animationId = 0;
     let lastInferenceAt = 0;
+    let lastTelemetryAt = 0;
     let syntheticTime = 0;
+    let isTabVisible = !document.hidden;
+
+    const handleVisibilityChange = () => {
+      isTabVisible = !document.hidden;
+      if (isTabVisible) {
+        cancelAnimationFrame(animationId);
+        animationId = requestAnimationFrame(draw);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     const drawScanner = (ctx: CanvasRenderingContext2D, w: number, h: number, t: number) => {
       const boxX = w * 0.22;
@@ -403,12 +426,15 @@ export const FaceTrainingScene: React.FC<FaceTrainingSceneProps> = ({
         const signals = trackerRef.current.detect(video);
         if (signals) {
           signalsRef.current = signals;
-          setTelemetry({
-            yaw: signals.yaw,
-            roll: signals.rollDeg,
-            smile: signals.smile,
-            blink: signals.blink,
-          });
+          if (time - lastTelemetryAt >= 200) {
+            lastTelemetryAt = time;
+            setTelemetry({
+              yaw: signals.yaw,
+              roll: signals.rollDeg,
+              smile: signals.smile,
+              blink: signals.blink,
+            });
+          }
 
           if (signals.detected) {
             if (phaseRef.current === 'acquiring') {
@@ -479,7 +505,10 @@ export const FaceTrainingScene: React.FC<FaceTrainingSceneProps> = ({
     };
 
     animationId = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(animationId);
+    return () => {
+      cancelAnimationFrame(animationId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [isSimulated, trackerError]);
 
   const currentStep = trainingSteps[currentPromptIndex];

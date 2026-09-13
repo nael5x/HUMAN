@@ -183,8 +183,8 @@ export class DynamicNarrative {
     if (summary.firstMoveLatencyMs > 0 && summary.firstMoveLatencyMs < 400) {
       candidates.push('Immediate kinetic readiness recorded.');
     }
-    candidates.push('Movement trajectory matches expected session variance.');
-    candidates.push('Decision latency falls within the current session baseline.');
+    candidates.push('Kinematic trajectory matches biological variance.');
+    candidates.push('Decision latency falls within mammalian baseline.');
 
     // Select candidates not recently shown
     const selected: string[] = [];
@@ -198,7 +198,7 @@ export class DynamicNarrative {
 
     // If all were shown, use the top ones
     if (selected.length === 0) {
-      selected.push(candidates[0] || 'Movement trajectory matches expected session variance.');
+      selected.push(candidates[0] || 'Kinematic trajectory matches biological variance.');
     }
 
     return selected;

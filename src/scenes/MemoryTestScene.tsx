@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useSceneTimers } from '../utils/useSceneTimers';
 import { sound } from '../audio/AudioEngine';
 import { director } from '../director/ExperienceDirector';
 import { sessionMemory, MemoryTestMetrics } from '../memory/SessionMemory';
@@ -84,7 +83,6 @@ const GLYPHS = [
 ];
 
 export const MemoryTestScene: React.FC<MemoryTestSceneProps> = ({ seed, onComplete }) => {
-  const { setSceneTimeout, setSceneInterval } = useSceneTimers();
   // Pick 5 symbols to show
   const [shownSequence] = useState<number[]>(() => {
     const indices = [0, 1, 2, 3, 4, 5, 6, 7];
@@ -119,7 +117,7 @@ export const MemoryTestScene: React.FC<MemoryTestSceneProps> = ({ seed, onComple
     sound.playScanPulse();
 
     // 2.8s display countdown
-    const timer = setSceneInterval(() => {
+    const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
@@ -127,7 +125,7 @@ export const MemoryTestScene: React.FC<MemoryTestSceneProps> = ({ seed, onComple
           sound.playScanPulse();
 
           // Brief scanline mask transition
-          setSceneTimeout(() => {
+          setTimeout(() => {
             setPhase('TEST');
             testStartTimeRef.current = performance.now();
             sound.playClick(1400);
@@ -183,23 +181,23 @@ export const MemoryTestScene: React.FC<MemoryTestSceneProps> = ({ seed, onComple
     // Narrative timing steps
     setFeedbackStage(1); // "Choice recorded."
 
-    setSceneTimeout(() => {
+    setTimeout(() => {
       setFeedbackStage(2); // "Are you certain?"
       sound.playScanPulse();
     }, 1200);
 
-    setSceneTimeout(() => {
+    setTimeout(() => {
       setFeedbackStage(3); // "Memory confidence recorded."
       sound.playClick(1300);
     }, 2500);
 
-    setSceneTimeout(() => {
+    setTimeout(() => {
       setFeedbackStage(4); // "PATTERN SYNCHRONIZED"
       setPhase('ACCEPTED');
       sound.playAcceptedTick();
     }, 3600);
 
-    setSceneTimeout(() => {
+    setTimeout(() => {
       onComplete(metrics);
     }, 4800);
   };
@@ -227,7 +225,7 @@ export const MemoryTestScene: React.FC<MemoryTestSceneProps> = ({ seed, onComple
           <div className="space-y-8 animate-fadeIn w-full">
             <div className="space-y-1">
               <h2 className="text-lg sm:text-xl font-bold tracking-wider text-white uppercase">
-                OBSERVE THE CIPHER ARRAY
+                OBSERVE THE CIPHER CIPHER ARRAY
               </h2>
               <p className="text-xs text-neutral-500">Hold the sequence in working memory.</p>
             </div>

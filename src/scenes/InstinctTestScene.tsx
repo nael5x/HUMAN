@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useSceneTimers } from '../utils/useSceneTimers';
 import { sound } from '../audio/AudioEngine';
 import { sessionMemory } from '../memory/SessionMemory';
 
@@ -9,7 +8,6 @@ interface InstinctTestSceneProps {
 }
 
 export const InstinctTestScene: React.FC<InstinctTestSceneProps> = ({ seed, onComplete }) => {
-  const { setSceneTimeout } = useSceneTimers();
   const [hoveredShape, setHoveredShape] = useState<number | null>(null);
   const [selectedShape, setSelectedShape] = useState<number | null>(null);
   const [feedbackStage, setFeedbackStage] = useState<number>(0);
@@ -193,21 +191,21 @@ export const InstinctTestScene: React.FC<InstinctTestSceneProps> = ({ seed, onCo
 
     // Narrative timing steps
     setFeedbackStage(1); // "Selection recorded."
-    setSceneTimeout(() => {
+    setTimeout(() => {
       setFeedbackStage(2); // "You recognized something."
       sound.playScanPulse();
     }, 1100);
 
-    setSceneTimeout(() => {
+    setTimeout(() => {
       setFeedbackStage(3); // "...We don't know what."
     }, 2200);
 
-    setSceneTimeout(() => {
+    setTimeout(() => {
       setFeedbackStage(4); // "INSTINCT SAMPLE ACCEPTED"
       sound.playAcceptedTick();
     }, 3400);
 
-    setSceneTimeout(() => {
+    setTimeout(() => {
       onComplete(index, latency, switchesCountRef.current);
     }, 4500);
   };

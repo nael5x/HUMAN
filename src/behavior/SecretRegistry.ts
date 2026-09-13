@@ -39,8 +39,8 @@ export const SECRETS: Record<string, SecretDefinition> = {
   },
   PREDICTION_BREAKER: {
     id: 'PREDICTION_BREAKER',
-    name: 'Prediction Divergence',
-    triggerHint: 'Systematic subversion of local predictive heuristics.',
+    name: 'Bayesian Divergence',
+    triggerHint: 'Systematic subversion of predictive Markov anticipations.',
   },
 };
 
